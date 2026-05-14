@@ -54,51 +54,49 @@ const getLabel = (a) => KNOWN[a?.toLowerCase()] ?? null;
 /* ═══════════════════════════════════════════════════════════════════════════
    ETHERSCAN FETCHERS
 ═══════════════════════════════════════════════════════════════════════════ */
-// clé lue une seule fois au boot — VITE_ prefix requis pour Vite/Netlify
-const getKey = () => { try { return import.meta.env.VITE_ETHERSCAN_KEY || ""; } catch { return ""; } };
-let ES_KEY = getKey();
+// ── Proxy Netlify Function — aucune clé exposée côté client
+// En dev local : appels directs Etherscan (pas de proxy)
+const IS_DEV = typeof window !== "undefined" && window.location.hostname === "localhost";
 
-const esUrl = (mod, action, addr, extra = "") =>
-  `https://api.etherscan.io/api?module=${mod}&action=${action}&address=${addr}&apikey=${ES_KEY}${extra}`;
+function esProxy(params) {
+  if (IS_DEV) {
+    // Dev local : appel direct (nécessite clé dans champ API KEY)
+    const key = (() => { try { return import.meta.env.VITE_ETHERSCAN_KEY || _devKey; } catch { return _devKey; } })();
+    return `https://api.etherscan.io/api?${params}&apikey=${key}`;
+  }
+  // Production Netlify : proxy serverless (clé côté serveur)
+  return `/api/etherscan?${params}`;
+}
+
+let _devKey = ""; // clé locale pour dev uniquement
 
 async function safeJson(url, fallback = null) {
-  const safeUrl = url.replace(/apikey=[^&]+/, "apikey=***");
   try {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.status === "0") {
-      const msg = (j.message || "") + " " + (j.result || "");
-      console.warn("[Etherscan NOTOK]", msg.trim(), "|", safeUrl);
-      // Wallet vide = résultat valide
-      if (msg.includes("No transactions found") || msg.includes("No records found")) return [];
-      // Rate limit / timeout = on retourne le fallback sans crasher
-      if (msg.includes("rate limit") || msg.includes("Max rate") || msg.includes("timeout")) return fallback;
+      const msg = ((j.message || "") + " " + (j.result || "")).toLowerCase();
+      console.warn("[Etherscan]", j.message, j.result);
+      if (msg.includes("no transactions") || msg.includes("no records")) return [];
       return fallback;
     }
     return j.status === "1" ? j.result : fallback;
   } catch (e) {
-    console.warn("[safeJson error]", e.message, safeUrl.slice(0, 100));
+    console.warn("[safeJson]", e.message);
     return fallback;
   }
 }
 
-// Vérifie que la clé Etherscan est valide avant l'analyse
-async function checkApiKey(key) {
-  try {
-    const url = `https://api.etherscan.io/api?module=stats&action=ethprice&apikey=${key}`;
-    const r = await fetch(url);
-    const j = await r.json();
-    return j.status === "1";
-  } catch { return false; }
-}
+const esParams = (mod, action, addr, extra = "") =>
+  `module=${mod}&action=${action}&address=${addr}${extra}`;
 
-const fetchBalance    = (a) => safeJson(esUrl("account","balance",a,"&tag=latest"), "0").then(r => r ? weiToEth(r) : 0);
-const fetchTxList    = (a) => safeJson(esUrl("account","txlist",a,"&startblock=0&endblock=99999999&page=1&offset=500&sort=desc"), []).then(r => Array.isArray(r) ? r : []);
-const fetchTokenTx   = (a) => safeJson(esUrl("account","tokentx",a,"&startblock=0&endblock=99999999&page=1&offset=200&sort=desc"), []).then(r => Array.isArray(r) ? r : []);
-const fetchNFTTx     = (a) => safeJson(esUrl("account","tokennfttx",a,"&startblock=0&endblock=99999999&page=1&offset=100&sort=desc"), []).then(r => Array.isArray(r) ? r : []);
-const fetchIsContract= (a) => safeJson(esUrl("contract","getabi",a), null).then(r => !!r);
-const fetchEthPrice  = ()  => safeJson(`https://api.etherscan.io/api?module=stats&action=ethprice&apikey=${ES_KEY}`, null).then(r => r ? Number(r.ethusd) : 0);
+const fetchBalance    = (a) => safeJson(esProxy(esParams("account","balance",a,"&tag=latest")), "0").then(r => r ? weiToEth(r) : 0);
+const fetchTxList     = (a) => safeJson(esProxy(esParams("account","txlist",a,"&startblock=0&endblock=99999999&page=1&offset=500&sort=desc")), []).then(r => Array.isArray(r) ? r : []);
+const fetchTokenTx    = (a) => safeJson(esProxy(esParams("account","tokentx",a,"&startblock=0&endblock=99999999&page=1&offset=200&sort=desc")), []).then(r => Array.isArray(r) ? r : []);
+const fetchNFTTx      = (a) => safeJson(esProxy(esParams("account","tokennfttx",a,"&startblock=0&endblock=99999999&page=1&offset=100&sort=desc")), []).then(r => Array.isArray(r) ? r : []);
+const fetchIsContract = (a) => safeJson(esProxy(esParams("contract","getabi",a)), null).then(r => !!r);
+const fetchEthPrice   = ()  => safeJson(esProxy("module=stats&action=ethprice"), null).then(r => r ? Number(r.ethusd) : 0);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GRAPH BUILDER
@@ -704,7 +702,7 @@ const TABS = ["Graphe","Métriques","Analyse IA","Tokens / NFT"];
 
 export default function App() {
   const [addr,      setAddr]      = useState("");
-  const [apiKey,    setApiKey]    = useState(() => { try { return import.meta.env.VITE_ETHERSCAN_KEY || ""; } catch { return ""; } });
+  const [apiKey,    setApiKey]    = useState(""); // utilisé uniquement en dev local
   const [loading,   setLoading]   = useState(false);
   const [step,      setStep]      = useState("");
   const [error,     setError]     = useState("");
@@ -718,9 +716,8 @@ export default function App() {
   const analyze = useCallback(async () => {
     const address = addr.trim();
     if (!/^0x[0-9a-fA-F]{40}$/.test(address)) { setError("Adresse Ethereum invalide."); return; }
-    // Mise à jour de la clé AVANT tout fetch
-    ES_KEY = apiKey.trim();
-    if (!ES_KEY) { setError("⚠ Clé Etherscan manquante — ouvrez API KEY et entrez votre clé."); return; }
+    // En dev local, la clé du champ est utilisée directement
+    _devKey = apiKey.trim();
     setError(""); setLoading(true); setResult(null); setGraph(null); setSelNode(null);
     try {
       setStep("Solde & prix ETH…");
@@ -802,10 +799,15 @@ export default function App() {
 
       {showKey && (
         <div style={{ background:"#05101f",borderBottom:"1px solid #0c2040",padding:"12px 24px",display:"flex",gap:12,alignItems:"center" }}>
-          <span style={{ color:"#2a4060",fontSize:10,whiteSpace:"nowrap" }}>Clé Etherscan</span>
-          <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)}
-            style={{ flex:1,background:"#030912",border:"1px solid #1a3050",borderRadius:7,padding:"7px 12px",color:"#00ffe0",fontSize:11,fontFamily:"'Space Mono',monospace" }}
-            placeholder="Entrez votre clé Etherscan…"/>
+          <span style={{ color:"#2a4060",fontSize:10,whiteSpace:"nowrap" }}>
+            {typeof window !== "undefined" && window.location.hostname === "localhost" ? "Clé Etherscan (dev local)" : "Clé gérée côté serveur (Netlify)"}
+          </span>
+          {typeof window !== "undefined" && window.location.hostname === "localhost"
+            ? <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)}
+                style={{ flex:1,background:"#030912",border:"1px solid #1a3050",borderRadius:7,padding:"7px 12px",color:"#00ffe0",fontSize:11,fontFamily:"'Space Mono',monospace" }}
+                placeholder="Clé Etherscan pour dev local…"/>
+            : <span style={{ color:"#22c55e",fontSize:11,fontFamily:"'Space Mono',monospace" }}>✓ ETHERSCAN_KEY injectée via variable d'environnement Netlify</span>
+          }
           <a href="https://etherscan.io/apis" target="_blank" rel="noreferrer" style={{ color:"#1a3050",fontSize:10,textDecoration:"none",whiteSpace:"nowrap" }}>Clé gratuite ↗</a>
         </div>
       )}
@@ -831,13 +833,11 @@ export default function App() {
           </div>
         )}
         {error && <div style={{ marginTop:10,color:"#ef4444",fontSize:12,padding:"9px 14px",background:"#ef444410",border:"1px solid #ef444425",borderRadius:8 }}>{error}</div>}
-        {/* Indicateur statut clé API */}
+        {/* Indicateur statut proxy */}
         {!loading && !result && (
           <div style={{ marginTop:10,display:"flex",alignItems:"center",gap:8,fontSize:10,fontFamily:"'Space Mono',monospace" }}>
-            <div style={{ width:6,height:6,borderRadius:"50%",background:apiKey&&apiKey!=="YourApiKeyToken"?"#22c55e":"#ef4444",flexShrink:0 }}/>
-            <span style={{ color:apiKey&&apiKey!=="YourApiKeyToken"?"#22c55e":"#ef4444" }}>
-              {apiKey&&apiKey!=="YourApiKeyToken" ? "Clé API configurée" : "Clé API manquante — ouvrez API KEY"}
-            </span>
+            <div style={{ width:6,height:6,borderRadius:"50%",background:"#22c55e",flexShrink:0 }}/>
+            <span style={{ color:"#22c55e" }}>Proxy Netlify actif — clé sécurisée côté serveur</span>
           </div>
         )}
       </div>

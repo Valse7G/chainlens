@@ -1,17 +1,23 @@
 [build]
   command   = "npm run build"
   publish   = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "20"
 
-# SPA fallback — toutes les routes renvoient vers index.html
+# Proxy /api/etherscan → Netlify Function
+[[redirects]]
+  from   = "/api/etherscan"
+  to     = "/.netlify/functions/etherscan"
+  status = 200
+
+# SPA fallback
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
   status = 200
 
-# Headers de sécurité
 [[headers]]
   for = "/*"
   [headers.values]
@@ -19,7 +25,6 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy        = "strict-origin-when-cross-origin"
 
-# Cache long terme pour les assets buildés
 [[headers]]
   for = "/assets/*"
   [headers.values]
