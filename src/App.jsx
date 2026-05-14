@@ -61,23 +61,25 @@ let ES_KEY = getKey();
 const esUrl = (mod, action, addr, extra = "") =>
   `https://api.etherscan.io/api?module=${mod}&action=${action}&address=${addr}&apikey=${ES_KEY}${extra}`;
 
-async function safeJson(url) {
-  // Masque la clé dans les logs
+async function safeJson(url, fallback = null) {
   const safeUrl = url.replace(/apikey=[^&]+/, "apikey=***");
   try {
     const r = await fetch(url);
-    if (!r.ok) throw new Error(`HTTP ${r.status} — ${safeUrl}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.status === "0") {
-      console.warn("[Etherscan]", j.message, "→", j.result, "|", safeUrl);
-      // "No transactions found" est un résultat valide (wallet vide)
-      if (j.message === "No transactions found") return [];
-      return null;
+      const msg = (j.message || "") + " " + (j.result || "");
+      console.warn("[Etherscan NOTOK]", msg.trim(), "|", safeUrl);
+      // Wallet vide = résultat valide
+      if (msg.includes("No transactions found") || msg.includes("No records found")) return [];
+      // Rate limit / timeout = on retourne le fallback sans crasher
+      if (msg.includes("rate limit") || msg.includes("Max rate") || msg.includes("timeout")) return fallback;
+      return fallback;
     }
-    return j.status === "1" ? j.result : null;
+    return j.status === "1" ? j.result : fallback;
   } catch (e) {
-    console.warn("[safeJson]", e.message);
-    return null;
+    console.warn("[safeJson error]", e.message, safeUrl.slice(0, 100));
+    return fallback;
   }
 }
 
@@ -91,12 +93,12 @@ async function checkApiKey(key) {
   } catch { return false; }
 }
 
-const fetchBalance  = (a) => safeJson(esUrl("account","balance",a,"&tag=latest")).then(r => r ? weiToEth(r) : 0);
-const fetchTxList   = (a) => safeJson(esUrl("account","txlist",a,"&startblock=0&endblock=99999999&page=1&offset=500&sort=desc")).then(r => r || []);
-const fetchTokenTx  = (a) => safeJson(esUrl("account","tokentx",a,"&startblock=0&endblock=99999999&page=1&offset=200&sort=desc")).then(r => r || []);
-const fetchNFTTx    = (a) => safeJson(esUrl("account","tokennfttx",a,"&startblock=0&endblock=99999999&page=1&offset=100&sort=desc")).then(r => r || []);
-const fetchIsContract = (a) => safeJson(esUrl("contract","getabi",a)).then(r => !!r);
-const fetchEthPrice = () => safeJson(`https://api.etherscan.io/api?module=stats&action=ethprice&apikey=${ES_KEY}`).then(r => r ? Number(r.ethusd) : 0);
+const fetchBalance    = (a) => safeJson(esUrl("account","balance",a,"&tag=latest"), "0").then(r => r ? weiToEth(r) : 0);
+const fetchTxList    = (a) => safeJson(esUrl("account","txlist",a,"&startblock=0&endblock=99999999&page=1&offset=500&sort=desc"), []).then(r => Array.isArray(r) ? r : []);
+const fetchTokenTx   = (a) => safeJson(esUrl("account","tokentx",a,"&startblock=0&endblock=99999999&page=1&offset=200&sort=desc"), []).then(r => Array.isArray(r) ? r : []);
+const fetchNFTTx     = (a) => safeJson(esUrl("account","tokennfttx",a,"&startblock=0&endblock=99999999&page=1&offset=100&sort=desc"), []).then(r => Array.isArray(r) ? r : []);
+const fetchIsContract= (a) => safeJson(esUrl("contract","getabi",a), null).then(r => !!r);
+const fetchEthPrice  = ()  => safeJson(`https://api.etherscan.io/api?module=stats&action=ethprice&apikey=${ES_KEY}`, null).then(r => r ? Number(r.ethusd) : 0);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GRAPH BUILDER
@@ -741,11 +743,27 @@ export default function App() {
       const g = buildGraph(address, txList);
       setGraph(g);
 
+      // Debug log — visible dans la console du navigateur (F12)
+      console.info("[ChainLens] Données reçues:", {
+        balance: balance.toFixed(4) + " ETH",
+        txCount: txList.length,
+        tokenTx: tokenTx.length,
+        nftTx: nftTx.length,
+        isContract,
+        graphNodes: g.nodes.length,
+      });
+
+      if (txList.length === 0 && balance === 0) {
+        setError("⚠ Aucune donnée reçue d'Etherscan. Vérifiez votre clé API dans le panneau API KEY, puis réessayez.");
+        setLoading(false); setStep(""); return;
+      }
+
       setStep("Analyse des agents…");
       const r = await runAnalysis(address, txList, tokenTx, nftTx, balance, isContract, g);
       setResult(r);
       setTab("Graphe");
     } catch(e) {
+      console.error("[ChainLens] Erreur analyze:", e);
       setError("Erreur : " + e.message);
     } finally { setLoading(false); setStep(""); }
   }, [addr, apiKey]);
