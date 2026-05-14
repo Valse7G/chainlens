@@ -54,7 +54,7 @@ const getLabel = (a) => KNOWN[a?.toLowerCase()] ?? null;
 /* ═══════════════════════════════════════════════════════════════════════════
    ETHERSCAN FETCHERS
 ═══════════════════════════════════════════════════════════════════════════ */
-let ES_KEY = import.meta.env.VITE_ETHERSCAN_KEY || "YourApiKeyToken";
+let ES_KEY = (() => { try { return import.meta.env.VITE_ETHERSCAN_KEY || "YourApiKeyToken"; } catch { return "YourApiKeyToken"; } })();
 const esUrl = (mod, action, addr, extra = "") =>
   `https://api.etherscan.io/api?module=${mod}&action=${action}&address=${addr}&apikey=${ES_KEY}${extra}`;
 
@@ -677,7 +677,7 @@ const TABS = ["Graphe","Métriques","Analyse IA","Tokens / NFT"];
 
 export default function App() {
   const [addr,      setAddr]      = useState("");
-  const [apiKey,    setApiKey]    = useState(import.meta.env.VITE_ETHERSCAN_KEY || "YourApiKeyToken");
+  const [apiKey,    setApiKey]    = useState(() => { try { return import.meta.env.VITE_ETHERSCAN_KEY || "YourApiKeyToken"; } catch { return "YourApiKeyToken"; } });
   const [loading,   setLoading]   = useState(false);
   const [step,      setStep]      = useState("");
   const [error,     setError]     = useState("");
