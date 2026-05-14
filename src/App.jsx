@@ -677,7 +677,7 @@ const TABS = ["Graphe","Métriques","Analyse IA","Tokens / NFT"];
 
 export default function App() {
   const [addr,      setAddr]      = useState("");
-  const [apiKey,    setApiKey]    = useState("YourApiKeyToken");
+  const [apiKey,    setApiKey]    = useState(import.meta.env.VITE_ETHERSCAN_KEY || "YourApiKeyToken");
   const [loading,   setLoading]   = useState(false);
   const [step,      setStep]      = useState("");
   const [error,     setError]     = useState("");
