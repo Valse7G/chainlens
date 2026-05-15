@@ -54,21 +54,24 @@ const getLabel = (a) => KNOWN[a?.toLowerCase()] ?? null;
 /* ═══════════════════════════════════════════════════════════════════════════
    ETHERSCAN FETCHERS
 ═══════════════════════════════════════════════════════════════════════════ */
-// ── Proxy Netlify Function — aucune clé exposée côté client
-// En dev local : appels directs Etherscan (pas de proxy)
+// ── Proxy Netlify Edge Function — clé jamais exposée côté client
 const IS_DEV = typeof window !== "undefined" && window.location.hostname === "localhost";
+let _devKey = "";
 
-function esProxy(params) {
-  if (IS_DEV) {
-    // Dev local : appel direct (nécessite clé dans champ API KEY)
-    const key = (() => { try { return import.meta.env.VITE_ETHERSCAN_KEY || _devKey; } catch { return _devKey; } })();
-    return `https://api.etherscan.io/api?${params}&apikey=${key}`;
+// Construit une URL propre avec URLSearchParams
+function buildUrl(fields) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
   }
-  // Production Netlify : proxy serverless (clé côté serveur)
-  return `/api/etherscan?${params}`;
+  if (IS_DEV) {
+    // Dev local : appel direct Etherscan avec clé du champ
+    p.set("apikey", _devKey);
+    return "https://api.etherscan.io/api?" + p.toString();
+  }
+  // Production : proxy Edge Function (clé côté serveur)
+  return "/api/etherscan?" + p.toString();
 }
-
-let _devKey = ""; // clé locale pour dev uniquement
 
 async function safeJson(url, fallback = null) {
   try {
@@ -77,26 +80,23 @@ async function safeJson(url, fallback = null) {
     const j = await r.json();
     if (j.status === "0") {
       const msg = ((j.message || "") + " " + (j.result || "")).toLowerCase();
-      console.warn("[Etherscan]", j.message, j.result);
+      console.warn("[Etherscan NOTOK]", j.message, "|", j.result);
       if (msg.includes("no transactions") || msg.includes("no records")) return [];
       return fallback;
     }
     return j.status === "1" ? j.result : fallback;
   } catch (e) {
-    console.warn("[safeJson]", e.message);
+    console.warn("[safeJson error]", e.message);
     return fallback;
   }
 }
 
-const esParams = (mod, action, addr, extra = "") =>
-  `module=${mod}&action=${action}&address=${addr}${extra}`;
-
-const fetchBalance    = (a) => safeJson(esProxy(esParams("account","balance",a,"&tag=latest")), "0").then(r => r ? weiToEth(r) : 0);
-const fetchTxList     = (a) => safeJson(esProxy(esParams("account","txlist",a,"&startblock=0&endblock=99999999&page=1&offset=500&sort=desc")), []).then(r => Array.isArray(r) ? r : []);
-const fetchTokenTx    = (a) => safeJson(esProxy(esParams("account","tokentx",a,"&startblock=0&endblock=99999999&page=1&offset=200&sort=desc")), []).then(r => Array.isArray(r) ? r : []);
-const fetchNFTTx      = (a) => safeJson(esProxy(esParams("account","tokennfttx",a,"&startblock=0&endblock=99999999&page=1&offset=100&sort=desc")), []).then(r => Array.isArray(r) ? r : []);
-const fetchIsContract = (a) => safeJson(esProxy(esParams("contract","getabi",a)), null).then(r => !!r);
-const fetchEthPrice   = ()  => safeJson(esProxy("module=stats&action=ethprice"), null).then(r => r ? Number(r.ethusd) : 0);
+const fetchBalance    = (a) => safeJson(buildUrl({ module:"account", action:"balance",     address:a, tag:"latest" }), "0").then(r => r ? weiToEth(r) : 0);
+const fetchTxList     = (a) => safeJson(buildUrl({ module:"account", action:"txlist",      address:a, startblock:0, endblock:99999999, page:1, offset:500, sort:"desc" }), []).then(r => Array.isArray(r) ? r : []);
+const fetchTokenTx    = (a) => safeJson(buildUrl({ module:"account", action:"tokentx",     address:a, startblock:0, endblock:99999999, page:1, offset:200, sort:"desc" }), []).then(r => Array.isArray(r) ? r : []);
+const fetchNFTTx      = (a) => safeJson(buildUrl({ module:"account", action:"tokennfttx", address:a, startblock:0, endblock:99999999, page:1, offset:100, sort:"desc" }), []).then(r => Array.isArray(r) ? r : []);
+const fetchIsContract = (a) => safeJson(buildUrl({ module:"contract", action:"getabi",    address:a }), null).then(r => !!r);
+const fetchEthPrice   = ()  => safeJson(buildUrl({ module:"stats",   action:"ethprice" }), null).then(r => r ? Number(r.ethusd) : 0);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GRAPH BUILDER
