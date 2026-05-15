@@ -39,7 +39,8 @@ export default async (req, context) => {
   }
   esParams.set("apikey", API_KEY);
 
-  const esUrl = "https://api.etherscan.io/api?" + esParams.toString();
+  esParams.set("chainid", "1"); // Ethereum mainnet — API V2 obligatoire
+  const esUrl = "https://api.etherscan.io/v2/api?" + esParams.toString();
   console.log("[etherscan fn] URL →", esUrl.replace(/apikey=[^&]+/, "apikey=***"));
 
   try {
