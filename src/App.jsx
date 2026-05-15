@@ -750,8 +750,12 @@ export default function App() {
         graphNodes: g.nodes.length,
       });
 
-      if (txList.length === 0 && balance === 0) {
-        setError("⚠ Aucune donnée reçue d'Etherscan. Vérifiez votre clé API dans le panneau API KEY, puis réessayez.");
+      console.info("[ChainLens] Données reçues:", {
+        balance, txCount: txList.length, tokenTx: tokenTx.length, nftTx: nftTx.length, isContract
+      });
+
+      if (txList.length === 0 && balance === 0 && tokenTx.length === 0) {
+        setError("⚠ Aucune donnée reçue. Causes possibles : (1) La variable ETHERSCAN_KEY n'est pas définie dans Netlify > Environment variables — vérifiez le nom exact. (2) Wallet réellement vide. Ouvrez F12 > Console pour voir les logs détaillés.");
         setLoading(false); setStep(""); return;
       }
 
