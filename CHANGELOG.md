@@ -158,3 +158,26 @@ Full on-chain intelligence pipeline detecting new token buys by tracked smart mo
 - Navigation: 4th tab ⚡ SMART MONEY added to header
 - `package.json`: bumped to `2.1.0`
 - Footer version string: `v2.1.0`
+
+---
+
+## [2.1.1] — 2026-05-16
+
+### Changed — Automated Scanning
+
+**Smart Money page:**
+- **Auto-scan on mount** at 1H timeframe — no manual trigger needed on first load
+- **Auto-repeat every 3 minutes** regardless of active timeframe (uses `tfIdRef` to always read current TF without stale closure)
+- **4 timeframes with persistent cache**: `1H / 6H / 1D / 1W` — switching TF shows cached data instantly; green dot indicator on tabs that have data
+- **Live countdown**: `LIVE · next in M:SS` always visible in controls bar
+- Removed manual `LIVE ON/OFF` toggle — always-on is the default behavior
+- Manual `SCAN NOW` button still available for immediate refresh of current TF
+- Period selector now removed (replaced by TF tabs); scan window = TF duration
+
+**Leaderboard page:**
+- **Auto-load on mount** (30-day period, no click needed)
+- **Auto-refresh every 60 minutes** with countdown `AUTO · Xh YYm` in header
+- **Period buttons now trigger immediate reload** (`load(d)` called on period change)
+- Last scan timestamp displayed in header
+- Empty state shows spinner instead of "click LOAD" instruction
+- `periodRef` pattern used for timer callback to avoid stale closure

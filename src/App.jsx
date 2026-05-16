@@ -1,5 +1,5 @@
 /**
- * ChainLens v2.1.0 — Main Application
+ * ChainLens v2.1.1 — Main Application
  * On-chain intelligence engine. Bilingual EN/FR.
  * No external AI API. Etherscan V2. Uniswap V3 Subgraph.
  */
@@ -842,14 +842,36 @@ function PageLeaderboard({onAnalyze, t}) {
   const [period,setPeriod]=useState(30);
   const [sortKey,setSortKey]=useState("totalVolumeUSD");
   const [filter,setFilter]=useState("");
+  const [lastUpdate,setLastUpdate]=useState(null);
+  const [nextRefresh,setNextRefresh]=useState(0);
+  const lbTimerRef=useRef(null);
+  const lbCdRef=useRef(null);
+  const LB_REFRESH_MS = 60*60*1000; // 1 hour
+  const periodRef=useRef(period);
+  useEffect(()=>{ periodRef.current=period; },[period]);
 
-  const load=useCallback(async()=>{
+  const load=useCallback(async(forcePeriod)=>{
+    const p=forcePeriod??periodRef.current;
     setLoading(true);setTraders([]);setInsiders({hotTokens:[],insiderGroups:[]});
-    const data=await fetchTopUniswapTraders(period);
+    const data=await fetchTopUniswapTraders(p);
     setTraders(data);
     setInsiders(analyzeInsiders(data));
+    setLastUpdate(Date.now());
     setLoading(false);
-  },[period]);
+  },[]);
+
+  // Auto-load on mount + every 60 min
+  useEffect(()=>{
+    load(30);
+    setNextRefresh(LB_REFRESH_MS/1000);
+    lbCdRef.current=setInterval(()=>setNextRefresh(c=>{
+      if(c<=1){ load(periodRef.current); return LB_REFRESH_MS/1000; }
+      return c-1;
+    }),1000);
+    lbTimerRef.current=setInterval(()=>load(periodRef.current),LB_REFRESH_MS);
+    return()=>{ clearInterval(lbTimerRef.current); clearInterval(lbCdRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   const filtered=useMemo(()=>{
     const q=filter.toLowerCase();
@@ -867,15 +889,23 @@ function PageLeaderboard({onAnalyze, t}) {
           <span className="display" style={{fontSize:32,color:T.amber}}>{t("lb_subtitle")}</span>
         </div>
         <div style={{flex:1}}/>
+        {/* Auto-refresh indicator */}
+        <div className="mono" style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",
+          background:T.bg1,border:`1px solid ${T.border2}`,borderRadius:5,fontSize:9,color:T.green}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:T.green,
+            animation:"pulse 2s ease-in-out infinite",flexShrink:0}}/>
+          AUTO · {Math.floor(nextRefresh/3600)}h{String(Math.floor((nextRefresh%3600)/60)).padStart(2,"0")}m
+        </div>
+        {lastUpdate&&<span className="mono" style={{fontSize:9,color:T.muted}}>{new Date(lastUpdate).toLocaleTimeString()}</span>}
         {[7,30,90,180].map(d=>(
-          <button key={d} onClick={()=>setPeriod(d)} className="mono"
+          <button key={d} onClick={()=>{setPeriod(d);load(d);}} className="mono"
             style={{padding:"6px 14px",background:period===d?T.amber+"20":"transparent",
               border:`1px solid ${period===d?T.amber:T.border2}`,borderRadius:5,
               color:period===d?T.amber:T.muted,cursor:"pointer",fontSize:10}}>
             {d}{t("lb_period")}
           </button>
         ))}
-        <button onClick={load} disabled={loading}
+        <button onClick={()=>load(period)} disabled={loading}
           style={{padding:"9px 22px",background:loading?T.bg2:`linear-gradient(135deg,${T.amber},${T.red})`,
             border:"none",borderRadius:6,color:loading?T.muted:T.bg,fontWeight:700,
             cursor:loading?"not-allowed":"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:"0.1em"}}>
@@ -973,9 +1003,13 @@ function PageLeaderboard({onAnalyze, t}) {
       )}
 
       {!loading&&traders.length===0&&(
-        <div style={{textAlign:"center",padding:"80px 0"}}>
+        <div style={{textAlign:"center",padding:"60px 0"}}>
           <div className="display" style={{fontSize:52,color:T.dim,marginBottom:12}}>{t("lb_empty_title")}</div>
-          <div className="mono" style={{color:T.muted,fontSize:11,whiteSpace:"pre-line"}}>{t("lb_empty_sub")}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
+            <div style={{width:14,height:14,border:`2px solid ${T.amber}`,borderTopColor:"transparent",
+              borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span className="mono" style={{color:T.muted,fontSize:11}}>Auto-loading…</span>
+          </div>
         </div>
       )}
     </div>

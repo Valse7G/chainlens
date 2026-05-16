@@ -232,51 +232,73 @@ function LiveTicker({events}) {
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────
-const AUTO_REFRESH_SEC = 120;
 
 export default function PageSmartMoney({onAnalyze, devKey, t}) {
-  const [tokens,    setTokens]    = useState([]);
-  const [events,    setEvents]    = useState([]);
-  const [loading,   setLoading]   = useState(false);
-  const [progress,  setProgress]  = useState({text:"", pct:0});
-  const [hours,     setHours]     = useState(24);
-  const [lastUpdate,setLastUpdate]= useState(null);
-  const [countdown, setCountdown] = useState(AUTO_REFRESH_SEC);
-  const [autoRefresh,setAutoRefresh]=useState(false);
-  const [sortBy,    setSortBy]    = useState("smCount");
-  const [filterTier,setFilterTier]= useState(0); // 0=all
-  const timerRef = useRef(null);
-  const cdRef    = useRef(null);
+  // ── Timeframe config ────────────────────────────────────────────────
+  const TIMEFRAMES = [
+    { id:"1H",  hours:1,   label:"1H",  scanEvery: 3*60  }, // scan every 3 min
+    { id:"6H",  hours:6,   label:"6H",  scanEvery: 10*60 },
+    { id:"1D",  hours:24,  label:"1D",  scanEvery: 30*60 },
+    { id:"1W",  hours:168, label:"1W",  scanEvery: 60*60 },
+  ];
+  const AUTO_SCAN_MS = 3 * 60 * 1000; // 3 minutes for active TF
 
-  const run = useCallback(async() => {
+  // ── State ────────────────────────────────────────────────────────────
+  const [tfId,      setTfId]      = useState("1H");
+  const [cache,     setCache]     = useState({"1H":null,"6H":null,"1D":null,"1W":null}); // {tokens, events, ts}
+  const [loading,   setLoading]   = useState(false);
+  const [progress,  setProgress]  = useState({text:"",pct:0});
+  const [sortBy,    setSortBy]    = useState("smCount");
+  const [filterTier,setFilterTier]= useState(0);
+  const [countdown, setCountdown] = useState(0);
+  const scanRef  = useRef(null);
+  const cdRef    = useRef(null);
+  const tfIdRef  = useRef(tfId);
+  useEffect(()=>{ tfIdRef.current=tfId; },[tfId]);
+
+  // Current TF data (from cache)
+  const currentTF  = TIMEFRAMES.find(tf=>tf.id===tfId)||TIMEFRAMES[0];
+  const cacheEntry = cache[tfId];
+  const tokens     = cacheEntry?.tokens || [];
+  const events     = cacheEntry?.events || [];
+  const lastUpdate = cacheEntry?.ts     || null;
+
+  // ── Core scan function ───────────────────────────────────────────────
+  const run = useCallback(async(forceTfId)=>{
+    const activeTf = TIMEFRAMES.find(tf=>tf.id===(forceTfId||tfIdRef.current))||TIMEFRAMES[0];
     setLoading(true);
     setEngineKey(devKey||"");
     try {
-      const result = await runPipeline(hours, (p)=>setProgress(p));
-      setTokens(result);
-      // Build live events from SM buys
-      const evts = result.flatMap(tok =>
-        tok.smBuyers.map(b=>({
-          name: b.wallet.name, tier: b.wallet.tier,
-          symbol: tok.symbol, ts: b.ts,
-        }))
+      const result = await runPipeline(activeTf.hours, (p)=>setProgress(p));
+      const evts = result.flatMap(tok=>
+        tok.smBuyers.map(b=>({name:b.wallet.name,tier:b.wallet.tier,symbol:tok.symbol,ts:b.ts}))
       ).sort((a,b)=>b.ts-a.ts);
-      setEvents(prev=>[...prev.slice(-50),...evts.filter(e=>!prev.find(p=>p.name===e.name&&p.symbol===e.symbol))]);
-      setLastUpdate(Date.now());
+      setCache(prev=>({
+        ...prev,
+        [activeTf.id]: {
+          tokens: result,
+          events: [...(prev[activeTf.id]?.events||[]).slice(-50), ...evts.filter(e=>!(prev[activeTf.id]?.events||[]).find(p=>p.name===e.name&&p.symbol===e.symbol))],
+          ts: Date.now(),
+        }
+      }));
     } catch(e) { console.error("[SM Page]",e); }
     finally { setLoading(false); setProgress({text:"",pct:0}); }
-  },[hours,devKey]);
+  },[devKey]);
 
-  // Auto-refresh countdown
+  // ── Auto-scan: start immediately + repeat every 3 min ────────────────
   useEffect(()=>{
-    if (!autoRefresh) { clearInterval(timerRef.current); clearInterval(cdRef.current); return; }
-    setCountdown(AUTO_REFRESH_SEC);
-    cdRef.current = setInterval(()=>setCountdown(c=>Math.max(0,c-1)),1000);
-    timerRef.current = setInterval(run, AUTO_REFRESH_SEC*1000);
-    return ()=>{ clearInterval(timerRef.current); clearInterval(cdRef.current); };
-  },[autoRefresh,run]);
-
-  useEffect(()=>{ if(autoRefresh&&countdown===0) setCountdown(AUTO_REFRESH_SEC); },[countdown,autoRefresh]);
+    // Initial scan on mount
+    run("1H");
+    // Countdown display
+    setCountdown(AUTO_SCAN_MS/1000);
+    cdRef.current = setInterval(()=>setCountdown(c=>{
+      if (c<=1) { run(tfIdRef.current); return AUTO_SCAN_MS/1000; }
+      return c-1;
+    }),1000);
+    scanRef.current = setInterval(()=>run(tfIdRef.current), AUTO_SCAN_MS);
+    return ()=>{ clearInterval(scanRef.current); clearInterval(cdRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   const sorted = [...tokens]
     .filter(tok=>filterTier===0||tok.smBuyers.some(b=>b.wallet.tier===filterTier))
@@ -300,12 +322,10 @@ export default function PageSmartMoney({onAnalyze, devKey, t}) {
               New token buys by tracked wallets · Uniswap V3 · Live from Etherscan
             </div>
           </div>
-          {lastUpdate&&(
-            <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:T.dim,textAlign:"right"}}>
-              <div>Last scan: {new Date(lastUpdate).toLocaleTimeString()}</div>
-              {autoRefresh&&<div style={{color:T.cyan}}>Auto-refresh in {countdown}s</div>}
-            </div>
-          )}
+          <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:T.dim,textAlign:"right"}}>
+            {lastUpdate&&<div style={{color:T.sub}}>Last scan ({tfId}): {new Date(lastUpdate).toLocaleTimeString()}</div>}
+            <div style={{color:T.dim,marginTop:2}}>Auto-scan every 3 min · {SMART_MONEY.length} wallets tracked</div>
+          </div>
         </div>
       </div>
 
@@ -314,17 +334,25 @@ export default function PageSmartMoney({onAnalyze, devKey, t}) {
 
       {/* ── Controls ── */}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-        {/* Period */}
-        {[6,12,24,48].map(h=>(
-          <button key={h} onClick={()=>setHours(h)} style={{
-            padding:"6px 14px",background:hours===h?T.cyan+"20":"transparent",
-            border:`1px solid ${hours===h?T.cyan:T.border2}`,borderRadius:5,
-            color:hours===h?T.cyan:T.muted,cursor:"pointer",fontSize:10,
-            fontFamily:"'IBM Plex Mono',monospace"}}>
-            {h}H
-          </button>
-        ))}
+
+        {/* Timeframe selector */}
+        {TIMEFRAMES.map(tf=>{
+          const hasData = !!cache[tf.id];
+          return (
+            <button key={tf.id} onClick={()=>setTfId(tf.id)} style={{
+              padding:"6px 14px",background:tfId===tf.id?T.cyan+"22":"transparent",
+              border:`1px solid ${tfId===tf.id?T.cyan:hasData?T.border2:T.border}`,borderRadius:5,
+              color:tfId===tf.id?T.cyan:hasData?T.sub:T.muted,cursor:"pointer",fontSize:10,
+              fontFamily:"'IBM Plex Mono',monospace",position:"relative"}}>
+              {tf.label}
+              {hasData&&<span style={{position:"absolute",top:-3,right:-3,width:6,height:6,
+                borderRadius:"50%",background:T.green,border:`1px solid ${T.bg}`}}/>}
+            </button>
+          );
+        })}
+
         <div style={{width:1,height:20,background:T.border,margin:"0 4px"}}/>
+
         {/* Sort */}
         {[["smCount","SM COUNT"],["tier1Count","TIER 1"],["tokenRisk","RISK"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSortBy(k)} style={{
@@ -335,7 +363,9 @@ export default function PageSmartMoney({onAnalyze, devKey, t}) {
             {l}
           </button>
         ))}
+
         <div style={{width:1,height:20,background:T.border,margin:"0 4px"}}/>
+
         {/* Tier filter */}
         {[[0,"ALL"],[1,"⚡ ALPHA"],[2,"💼 FUND"],[3,"👁 KNOWN"]].map(([tier,label])=>(
           <button key={tier} onClick={()=>setFilterTier(tier)} style={{
@@ -346,24 +376,25 @@ export default function PageSmartMoney({onAnalyze, devKey, t}) {
             {label}
           </button>
         ))}
+
         <div style={{flex:1}}/>
-        {/* Auto-refresh */}
-        <button onClick={()=>setAutoRefresh(v=>!v)} style={{
-          padding:"6px 14px",background:autoRefresh?T.green+"20":"transparent",
-          border:`1px solid ${autoRefresh?T.green:T.border2}`,borderRadius:5,
-          color:autoRefresh?T.green:T.muted,cursor:"pointer",fontSize:10,
-          fontFamily:"'IBM Plex Mono',monospace",display:"flex",alignItems:"center",gap:6}}>
-          <span style={{width:6,height:6,borderRadius:"50%",background:autoRefresh?T.green:T.muted,
-            animation:autoRefresh?"pulse 1s ease-in-out infinite":"none"}}/>
-          {autoRefresh?"LIVE ON":"LIVE OFF"}
-        </button>
-        {/* Scan button */}
-        <button onClick={run} disabled={loading} style={{
-          padding:"8px 22px",background:loading?T.bg2:`linear-gradient(135deg,${T.cyan},#0066ff)`,
+
+        {/* Auto countdown */}
+        <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",
+          background:T.bg1,border:`1px solid ${T.border2}`,borderRadius:5}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:T.green,
+            animation:"pulse 1s ease-in-out infinite",flexShrink:0}}/>
+          <span style={{fontSize:9,color:T.green,fontFamily:"'IBM Plex Mono',monospace",whiteSpace:"nowrap"}}>
+            LIVE · next in {Math.floor(countdown/60)}:{String(countdown%60).padStart(2,"0")}
+          </span>
+        </div>
+
+        {/* Manual scan */}
+        <button onClick={()=>run(tfId)} disabled={loading} style={{
+          padding:"8px 20px",background:loading?T.bg2:`linear-gradient(135deg,${T.cyan},#0066ff)`,
           border:"none",borderRadius:6,color:loading?T.muted:T.bg,
           fontWeight:700,cursor:loading?"not-allowed":"pointer",
-          fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:"0.1em",
-          display:"flex",alignItems:"center",gap:8}}>
+          fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:"0.1em"}}>
           {loading?"SCANNING…":"SCAN NOW"}
         </button>
       </div>
