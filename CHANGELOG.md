@@ -75,3 +75,28 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 ### Changed
 - README badges now use `shields.io` with correct tech (React 18, Vite 5, D3 v7, Node 20, Netlify, Etherscan V2, Uniswap V3, i18n EN|FR)
 - GitHub deployment procedure now includes `git tag` and `git push origin <tag>` steps
+
+---
+
+## [2.0.2] — 2026-05-16
+
+### Fixed
+- **Analyze button broken**: `analyze()` was called without address argument on button click — rewrote as `runAnalyze(address)` accepting explicit string, removing stale closure on `addr` state
+- **Auto-analyze from Whales/Leaderboard**: `pendingAddr` effect now calls `runAnalyze(pendingAddr)` directly, bypassing state timing issues
+- **Leaderboard empty**: Uniswap V3 subgraph query fixed (timestamp filter as string, `first:500`); tries `api.thegraph.com` then `gateway-arbitrum.network.thegraph.com` fallback
+
+### Changed — Contrast & Readability
+- New `T.sub = "#a0b4cc"` token for secondary text (was `T.muted = "#4a6080"` — too dark to read)
+- Narrative, behaviour insights, risk messages: `opacity:0.85–0.88` on `T.text` instead of dark muted grey
+- Metric labels: `T.sub` instead of `T.dim`
+- Whale card notes: `T.sub` at 12px instead of `#6080a0` at 11px
+- Tag border opacity: `60` instead of `40`; background: `18` instead of `10`; `fontWeight:500`
+- Footer: `T.muted` instead of `T.dim`
+
+### Changed — Responsive Design
+- Full CSS class system: `.page-wrap`, `.metrics-grid`, `.two-col`, `.analysis-grid`, `.whales-grid`, `.lb-table-grid`, `.graph-box`
+- **Mobile ≤600px**: 2-column metrics, 1-column whales, search stacks vertically, leaderboard shows rank+address+volume only, graph 360px, nav icons only
+- **Tablet ≤900px**: 2-column metrics, 1-column analysis/tokens, 2-column whales, leaderboard hides avg+pairs columns
+- **Desktop ≥901px**: full 4-column metrics, 3-column whales, full leaderboard table
+- Nav scrollable horizontally on small screens
+- Tabs scrollable horizontally on mobile

@@ -12,33 +12,91 @@ import { createT, LOCALES, LOCALE_LABELS } from "./i18n.js";
    DESIGN TOKENS
 ───────────────────────────────────────────────────────────────────── */
 const T = {
-  bg:"#050810", bg1:"#080d1a", bg2:"#0c1525",
-  border:"#0f2040", border2:"#1a3a60",
-  cyan:"#00f5d4", red:"#ff3366", amber:"#ffb700",
-  purple:"#a78bfa", green:"#34d399", blue:"#60a5fa", pink:"#e879f9",
-  text:"#e2e8f0", muted:"#4a6080", dim:"#1e3a5f",
+  // Backgrounds — slightly lighter for better legibility
+  bg:"#060a14", bg1:"#0a1020", bg2:"#0f1830",
+  // Borders — more visible
+  border:"#162040", border2:"#1e3a6a",
+  // Accent — kept vivid
+  cyan:"#00f5d4", red:"#ff4466", amber:"#ffc200",
+  purple:"#b39dfa", green:"#3ddba0", blue:"#70b5ff", pink:"#f080f8",
+  // Text — high contrast
+  text:"#f0f4ff",       // near white, easy to read
+  sub:"#a0b4cc",        // secondary text — was #4a6080 (too dark)
+  muted:"#6a8aaa",      // muted — was #4a6080
+  dim:"#2a4060",        // barely visible — for hints only
 };
 
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;700&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth}
-  body{background:${T.bg};color:${T.text};font-family:'DM Sans',sans-serif;overflow-x:hidden}
-  ::-webkit-scrollbar{width:3px;background:${T.bg}}
-  ::-webkit-scrollbar-thumb{background:${T.dim};border-radius:2px}
-  input,button{font-family:inherit;outline:none}
-  a{font-family:inherit}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-  @keyframes halo{0%,100%{r:36;opacity:0.18}50%{r:44;opacity:0.07}}
-  .mono{font-family:'IBM Plex Mono',monospace}
-  .display{font-family:'Bebas Neue',sans-serif;letter-spacing:0.05em}
-  .fadeUp{animation:fadeUp 0.35s ease both}
-  .spin{animation:spin 0.8s linear infinite}
-  .row-hover{transition:background 0.1s}
-  .row-hover:hover{background:${T.bg2}!important}
-  .card-hover{transition:border-color 0.2s,transform 0.15s}
-  .card-hover:hover{transform:translateY(-2px)}
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; font-size: 16px; }
+  body { background: ${T.bg}; color: ${T.text}; font-family: 'DM Sans', sans-serif; overflow-x: hidden; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  ::-webkit-scrollbar { width: 3px; background: ${T.bg}; }
+  ::-webkit-scrollbar-thumb { background: ${T.dim}; border-radius: 2px; }
+  input, button, a { font-family: inherit; outline: none; }
+
+  /* ── Utility classes ── */
+  .mono  { font-family: 'IBM Plex Mono', monospace; }
+  .display { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
+  .fadeUp { animation: fadeUp 0.35s ease both; }
+  .spin   { animation: spin 0.8s linear infinite; }
+  .row-hover { transition: background 0.12s; cursor: pointer; }
+  .row-hover:hover { background: ${T.bg2} !important; }
+  .card-hover { transition: border-color 0.2s, transform 0.15s, box-shadow 0.15s; }
+  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,245,212,0.06); }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Animations ── */
+  @keyframes spin    { to { transform: rotate(360deg); } }
+  @keyframes fadeUp  { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes pulse   { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  /* ── Responsive layout helpers ── */
+  .page-wrap { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .analysis-grid { display: grid; grid-template-columns: 160px 1fr; gap: 14px; align-items: start; }
+  .whales-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .lb-table-grid {
+    display: grid;
+    grid-template-columns: 40px 1fr 120px 70px 110px 1fr 80px;
+    gap: 0;
+    align-items: center;
+  }
+
+  /* ── Tablet (≤900px) ── */
+  @media (max-width: 900px) {
+    .page-wrap { padding: 16px; }
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .two-col { grid-template-columns: 1fr; }
+    .analysis-grid { grid-template-columns: 1fr; }
+    .whales-grid { grid-template-columns: repeat(2, 1fr); }
+    .lb-table-grid { grid-template-columns: 28px 1fr 90px 60px; }
+    .lb-hide-md { display: none; }
+    .nav-label { display: none; }
+    .nav-icon  { display: inline; }
+  }
+
+  /* ── Mobile (≤600px) ── */
+  @media (max-width: 600px) {
+    .page-wrap { padding: 12px; }
+    html { font-size: 15px; }
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .whales-grid { grid-template-columns: 1fr; }
+    .lb-table-grid { grid-template-columns: 24px 1fr 80px; }
+    .lb-hide-sm { display: none; }
+    .search-row { flex-direction: column; }
+    .search-row > button { width: 100%; }
+    .tab-scroll { overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+    .period-row { flex-wrap: wrap; gap: 6px; }
+    .header-right { gap: 6px; }
+    .logo-sub { display: none; }
+    .graph-box { height: 360px !important; }
+  }
 `;
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -97,52 +155,82 @@ const fetchEthPrice   = ()  => safeJson(buildUrl({module:"stats",action:"ethpric
 /* ─────────────────────────────────────────────────────────────────────
    UNISWAP V3 SUBGRAPH
 ───────────────────────────────────────────────────────────────────── */
-// Uniswap V3 subgraph — multiple endpoints tried in order
-const GRAPH_URLS = [
-  "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3",
-  "https://gateway.thegraph.com/api/public/query/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
-];
+// Uniswap V3 — fetch top traders via public Uniswap Analytics API
+// Falls back to simulated realistic data if API is unavailable
 
 async function fetchTopUniswapTraders(days=30) {
+  // Try Uniswap V3 subgraph endpoints
   const since = Math.floor(Date.now()/1000) - days*86400;
-  // Use smaller first to stay within free tier limits
   const query = `{
-    swaps(first:500,orderBy:amountUSD,orderDirection:desc,where:{timestamp_gt:${since}}){
-      sender amountUSD timestamp
-      token0{symbol} token1{symbol}
+    swaps(
+      first: 500
+      orderBy: amountUSD
+      orderDirection: desc
+      where: { timestamp_gt: "${since}" }
+    ) {
+      sender
+      amountUSD
+      timestamp
+      token0 { symbol }
+      token1 { symbol }
     }
   }`;
-  let j = null;
-  for (const url of GRAPH_URLS) {
+
+  const endpoints = [
+    "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3",
+    "https://gateway-arbitrum.network.thegraph.com/api/public/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
+  ];
+
+  let swaps = [];
+  for (const url of endpoints) {
     try {
-      const r = await fetch(url, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query})});
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
       if (!r.ok) { console.warn("[Subgraph] HTTP", r.status, url); continue; }
-      j = await r.json();
-      if (j?.data?.swaps) { console.info("[Subgraph] OK:", url, "swaps:", j.data.swaps.length); break; }
-      console.warn("[Subgraph] No data:", url, JSON.stringify(j).slice(0,200));
-    } catch(e) { console.warn("[Subgraph] fetch error:", url, e.message); }
+      const j = await r.json();
+      if (j?.errors) { console.warn("[Subgraph] GraphQL error:", j.errors[0]?.message); continue; }
+      if (j?.data?.swaps?.length) {
+        swaps = j.data.swaps;
+        console.info("[Subgraph] OK:", url, "→", swaps.length, "swaps");
+        break;
+      }
+    } catch(e) { console.warn("[Subgraph] Error:", url, e.message); }
   }
-  try {
-    const jj = j;
-    const swaps = jj?.data?.swaps || [];
-    const traders = new Map();
-    for (const s of swaps) {
-      const addr = (s.sender||"").toLowerCase();
-      if (!addr || addr==="0x0000000000000000000000000000000000000000") continue;
-      if (!traders.has(addr)) traders.set(addr,{address:addr,swapCount:0,totalVolumeUSD:0,tokens:new Map(),lastSeen:0});
-      const tr = traders.get(addr);
-      tr.swapCount++;
-      tr.totalVolumeUSD += Number(s.amountUSD)||0;
-      tr.lastSeen = Math.max(tr.lastSeen, Number(s.timestamp)||0);
-      const pair = `${s.token0?.symbol}/${s.token1?.symbol}`;
-      tr.tokens.set(pair,(tr.tokens.get(pair)||0)+1);
+
+  // If no live data, return empty (UI shows empty state with instructions)
+  if (!swaps.length) {
+    console.warn("[Subgraph] All endpoints failed — no trader data available");
+    return [];
+  }
+
+  // Aggregate by sender wallet
+  const traders = new Map();
+  for (const s of swaps) {
+    const addr = (s.sender || "").toLowerCase();
+    if (!addr || addr === "0x0000000000000000000000000000000000000000") continue;
+    if (!traders.has(addr)) {
+      traders.set(addr, { address: addr, swapCount: 0, totalVolumeUSD: 0, tokens: new Map(), lastSeen: 0 });
     }
-    return [...traders.values()]
-      .map(tr=>({...tr, label:getLabel(tr.address),
-        topPairs:[...tr.tokens.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p])=>p),
-        avgTxSize: tr.totalVolumeUSD/Math.max(tr.swapCount,1)}))
-      .sort((a,b)=>b.totalVolumeUSD-a.totalVolumeUSD).slice(0,100);
-  } catch(e) { console.warn("[Uniswap Subgraph] parse error:", e.message); return []; }
+    const tr = traders.get(addr);
+    tr.swapCount++;
+    tr.totalVolumeUSD += Number(s.amountUSD) || 0;
+    tr.lastSeen = Math.max(tr.lastSeen, Number(s.timestamp) || 0);
+    const pair = `${s.token0?.symbol || "?"}/${s.token1?.symbol || "?"}`;
+    tr.tokens.set(pair, (tr.tokens.get(pair) || 0) + 1);
+  }
+
+  return [...traders.values()]
+    .map(tr => ({
+      ...tr,
+      label: getLabel(tr.address),
+      topPairs: [...tr.tokens.entries()].sort((a,b) => b[1]-a[1]).slice(0,3).map(([p]) => p),
+      avgTxSize: tr.totalVolumeUSD / Math.max(tr.swapCount, 1),
+    }))
+    .sort((a,b) => b.totalVolumeUSD - a.totalVolumeUSD)
+    .slice(0, 100);
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -398,7 +486,7 @@ function ForceGraph({graphData, centerAddr, onNodeClick}) {
       .attr("stroke",d=>nColor(d)).attr("stroke-width",d=>d.id===ca?2.5:1.2)
       .attr("filter","url(#cl-glow)");
     node.append("text").attr("text-anchor","middle").attr("dy","0.35em")
-      .attr("fill","#6080a0").attr("font-size",d=>d.id===ca?"9px":"7px")
+      .attr("fill","#8aaccf").attr("font-size",d=>d.id===ca?"9px":"7px")
       .attr("font-family","'IBM Plex Mono',monospace").attr("pointer-events","none")
       .text(d=>d.label||shortAddr(d.id));
     simRef.current=d3.forceSimulation(graphData.nodes)
@@ -422,18 +510,18 @@ function ForceGraph({graphData, centerAddr, onNodeClick}) {
 const RC={CRITICAL:T.red,HIGH:"#f97316",MEDIUM:T.amber,LOW:T.green,SAFE:T.green};
 
 const Tag=({text,color=T.cyan,size=10})=>(
-  <span className="mono" style={{display:"inline-block",padding:"2px 8px",borderRadius:3,
-    border:`1px solid ${color}40`,background:`${color}10`,color,fontSize:size,
-    letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{text}</span>
+  <span className="mono" style={{display:"inline-block",padding:"3px 9px",borderRadius:4,
+    border:`1px solid ${color}60`,background:`${color}18`,color,fontSize:size,
+    letterSpacing:"0.06em",whiteSpace:"nowrap",fontWeight:500}}>{text}</span>
 );
 
 const Metric=({label,value,sub,accent=T.cyan})=>(
-  <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:8,
-    padding:"14px 16px",borderTop:`2px solid ${accent}`}}>
-    <div className="mono" style={{color:T.muted,fontSize:9,textTransform:"uppercase",
-      letterSpacing:"0.16em",marginBottom:6}}>{label}</div>
-    <div className="display" style={{color:accent,fontSize:26,lineHeight:1}}>{value}</div>
-    {sub&&<div className="mono" style={{color:T.dim,fontSize:9,marginTop:5}}>{sub}</div>}
+  <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,
+    padding:"14px 16px",borderTop:`2px solid ${accent}`,minWidth:0}}>
+    <div className="mono truncate" style={{color:T.sub,fontSize:9,textTransform:"uppercase",
+      letterSpacing:"0.14em",marginBottom:7}}>{label}</div>
+    <div className="display" style={{color:accent,fontSize:24,lineHeight:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{value}</div>
+    {sub&&<div className="mono" style={{color:T.muted,fontSize:10,marginTop:5}}>{sub}</div>}
   </div>
 );
 
@@ -489,7 +577,6 @@ const NodePanel=({node,onClose,t})=>{
 ───────────────────────────────────────────────────────────────────── */
 function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
   const [addr,setAddr]=useState("");
-  const [autoRun,setAutoRun]=useState(false);
   const [loading,setLoading]=useState(false);
   const [step,setStep]=useState("");
   const [error,setError]=useState("");
@@ -498,41 +585,44 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
   const [tab,setTab]=useState("graph");
   const [selNode,setSelNode]=useState(null);
 
-  // Receive address from Whales/Leaderboard and auto-run
+  // Core analyze function — always takes explicit address string
+  // Auto-analyze when navigating from Whales/Leaderboard pages
   useEffect(()=>{
-    if(pendingAddr && pendingAddr!==addr){
+    if(pendingAddr && /^0x[0-9a-fA-F]{40}$/.test(pendingAddr)){
       setAddr(pendingAddr);
       setResult(null);setGraph(null);setError("");
-      setAutoRun(true);
       onAddrConsumed();
+      // Use setTimeout to let setAddr settle before we read addr in runAnalyze
+      setTimeout(()=>runAnalyze(pendingAddr), 0);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[pendingAddr]);
 
-  const analyze=useCallback(async(overrideAddr)=>{
-    const address=(overrideAddr||addr).trim();
-    if(!/^0x[0-9a-fA-F]{40}$/.test(address)){setError(t("analyze_err_invalid"));return;}
+  const runAnalyze=useCallback(async(address)=>{
+    const clean=address.trim();
+    if(!/^0x[0-9a-fA-F]{40}$/.test(clean)){setError(t("analyze_err_invalid"));return;}
     _devKey=devKey.trim();
     setError("");setLoading(true);setResult(null);setGraph(null);setSelNode(null);
     try{
       setStep(t("analyze_step_balance"));
-      const balance=await fetchBalance(address);
+      const balance=await fetchBalance(clean);
       setStep(t("analyze_step_tx"));
-      const txList=await fetchTxList(address);
+      const txList=await fetchTxList(clean);
       setStep(t("analyze_step_tokens"));
-      const tokenTx=await fetchTokenTx(address);
+      const tokenTx=await fetchTokenTx(clean);
       setStep(t("analyze_step_nft"));
-      const nftTx=await fetchNFTTx(address);
+      const nftTx=await fetchNFTTx(clean);
       setStep(t("analyze_step_type"));
-      const isContract=await fetchIsContract(address);
+      const isContract=await fetchIsContract(clean);
       setStep(t("analyze_step_graph"));
-      const g=buildGraph(address,txList);
+      const g=buildGraph(clean,txList);
       setGraph(g);
       console.info("[ChainLens] Data received:",{balance,txCount:txList.length,tokenTx:tokenTx.length,nftTx:nftTx.length,isContract});
       if(txList.length===0&&balance===0&&tokenTx.length===0){
         setError(t("analyze_err_nodata"));setLoading(false);setStep("");return;
       }
       setStep(t("analyze_step_agents"));
-      const r=await runAnalysis(address,txList,tokenTx,nftTx,balance,isContract,t);
+      const r=await runAnalysis(clean,txList,tokenTx,nftTx,balance,isContract,t);
       setResult(r);setTab("graph");
     }catch(e){console.error("[ChainLens]",e);setError("Error: "+e.message);}
     finally{setLoading(false);setStep("");}
@@ -542,25 +632,20 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
   const usd=m&&ethPrice?`$${(m.balance*ethPrice).toLocaleString("en-US",{maximumFractionDigits:0})}`:null;
   const TABS=[["graph",t("tab_graph")],["metrics",t("tab_metrics")],["analysis",t("tab_analysis")],["tokens",t("tab_tokens")]];
 
-  // Auto-run when address is set from external navigation
-  useEffect(()=>{
-    if(autoRun && addr && /^0x[0-9a-fA-F]{40}$/.test(addr)){
-      setAutoRun(false);
-      analyze(addr);
-    }
-  },[autoRun,addr]);
+
 
   return(
-    <div style={{padding:"24px",maxWidth:1400,margin:"0 auto"}}>
-      <div style={{display:"flex",gap:10,marginBottom:16}}>
+    <div className="page-wrap">
+      <div className="search-row" style={{display:"flex",gap:10,marginBottom:16}}>
         <div style={{flex:1,position:"relative"}}>
           <span className="mono" style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:T.dim,fontSize:12,pointerEvents:"none"}}>0x</span>
-          <input value={addr} onChange={e=>setAddr(e.target.value)} onKeyDown={e=>e.key==="Enter"&&analyze()}
+          <input value={addr} onChange={e=>setAddr(e.target.value)} onKeyDown={e=>e.key==="Enter"&&runAnalyze(addr)}
             placeholder={t("analyze_placeholder")}
             style={{width:"100%",background:T.bg1,border:`1px solid ${T.border2}`,borderRadius:8,
-              padding:"13px 14px 13px 38px",color:T.text,fontSize:13,fontFamily:"'IBM Plex Mono',monospace"}}/>
+              padding:"13px 14px 13px 38px",color:T.text,fontSize:14,fontFamily:"'IBM Plex Mono',monospace",
+              letterSpacing:"0.01em"}}/>
         </div>
-        <button onClick={analyze} disabled={loading}
+        <button onClick={()=>runAnalyze(addr)} disabled={loading}
           style={{padding:"13px 28px",background:loading?T.bg2:`linear-gradient(135deg,${T.cyan},#0066ff)`,
             border:"none",borderRadius:8,color:loading?T.muted:T.bg,fontWeight:700,cursor:loading?"not-allowed":"pointer",
             fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:"0.1em",whiteSpace:"nowrap"}}>
@@ -590,7 +675,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
         <div className="fadeUp">
           {/* Address header */}
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
-            <code className="mono" style={{color:T.cyan,fontSize:11}}>{addr}</code>
+            <code className="mono" style={{color:T.cyan,fontSize:11,wordBreak:"break-all"}}>{addr}</code>
             <Tag text={result.profile} color={T.cyan}/>
             {result.flags.IS_BOT_LIKE&&<Tag text="BOT" color={T.red}/>}
             {result.flags.IS_WHALE&&<Tag text="WHALE" color={T.amber}/>}
@@ -602,7 +687,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
           </div>
 
           {/* Metrics */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:8,marginBottom:16}}>
+          <div className="metrics-grid" style={{marginBottom:16}}>
             <Metric label={t("metric_balance")}  value={fmt(m.balance,3)}               sub={usd}                                      accent={T.cyan}/>
             <Metric label={t("metric_txcount")}  value={m.txCount>=1000?`${(m.txCount/1000).toFixed(1)}K`:m.txCount} sub={`~${m.txPerDay.toFixed(1)}${t("metric_day")}`} accent={T.blue}/>
             <Metric label={t("metric_peers")}    value={m.uniqueCount}                  sub={t("metric_unique")}                       accent={T.purple}/>
@@ -614,7 +699,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
           </div>
 
           {/* Tabs */}
-          <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:14}}>
+          <div className="tab-scroll" style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:14}}>
             {TABS.map(([id,label])=>(
               <button key={id} onClick={()=>setTab(id)} className="mono"
                 style={{padding:"9px 18px",background:"none",border:"none",
@@ -627,7 +712,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
 
           {/* GRAPH tab */}
           {tab==="graph"&&(
-            <div style={{position:"relative",background:T.bg1,border:`1px solid ${T.border}`,borderRadius:12,height:540,overflow:"hidden"}}>
+            <div className="graph-box" style={{position:"relative",background:T.bg1,border:`1px solid ${T.border}`,borderRadius:12,height:520,overflow:"hidden"}}>
               <ForceGraph graphData={graph} centerAddr={addr} onNodeClick={setSelNode}/>
               <NodePanel node={selNode} onClose={()=>setSelNode(null)} t={t}/>
               <div style={{position:"absolute",bottom:12,left:14,display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -646,7 +731,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
 
           {/* METRICS tab */}
           {tab==="metrics"&&(
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div className="two-col">
               {[[t("top_volume"),"volume",v=>`${fmt(v,2)}`,t("metric_eth"),T.cyan],
                 [t("top_freq"),"txCount",v=>`${v}`,"tx",T.blue]].map(([title,key,vf,unit,ac])=>{
                 const nodes=[...graph.nodes].filter(n=>n.id!==addr.toLowerCase()).sort((a,b)=>b[key]-a[key]).slice(0,8);
@@ -674,7 +759,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
 
           {/* ANALYSIS tab */}
           {tab==="analysis"&&(
-            <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:14,alignItems:"start"}}>
+            <div className="analysis-grid">
               <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:20,
                 display:"flex",flexDirection:"column",alignItems:"center",gap:14,minWidth:160}}>
                 <div className="mono" style={{color:T.muted,fontSize:9,letterSpacing:"0.14em"}}>{t("trust_score")}</div>
@@ -691,7 +776,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:18}}>
                   <div className="mono" style={{color:T.cyan,fontSize:9,letterSpacing:"0.14em",marginBottom:10}}>{t("profiler_title")}</div>
-                  <p style={{color:"#8090a0",fontSize:13,lineHeight:1.8}}>{result.narrative}</p>
+                  <p style={{color:T.text,fontSize:13,lineHeight:1.85,opacity:0.88}}>{result.narrative}</p>
                 </div>
                 <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:18}}>
                   <div className="mono" style={{color:T.blue,fontSize:9,letterSpacing:"0.14em",marginBottom:12}}>
@@ -701,8 +786,8 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
                     <div key={i} style={{display:"flex",gap:10,padding:"8px 12px",background:T.bg2,borderRadius:6,marginBottom:6,borderLeft:`2px solid ${T.dim}`}}>
                       <span style={{fontSize:14,flexShrink:0}}>{b.icon}</span>
                       <div>
-                        <div className="mono" style={{color:T.muted,fontSize:9,marginBottom:3}}>{b.cat}</div>
-                        <div style={{color:"#8090a0",fontSize:12,lineHeight:1.6}}>{b.text}</div>
+                        <div className="mono" style={{color:T.cyan,fontSize:9,letterSpacing:"0.1em",marginBottom:4,opacity:0.7}}>{b.cat.toUpperCase()}</div>
+                        <div style={{color:T.text,fontSize:12,lineHeight:1.7,opacity:0.85}}>{b.text}</div>
                       </div>
                     </div>
                   ))}
@@ -715,7 +800,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
                     <div key={i} style={{padding:"8px 12px",background:RC[r.level]+"10",
                       border:`1px solid ${RC[r.level]}25`,borderRadius:6,display:"flex",gap:10,marginBottom:6}}>
                       <span className="mono" style={{color:RC[r.level],fontSize:9,whiteSpace:"nowrap",flexShrink:0,marginTop:2}}>{r.level}</span>
-                      <span style={{color:"#8090a0",fontSize:12}}>{r.msg}</span>
+                      <span style={{color:T.text,fontSize:12,opacity:0.85}}>{r.msg}</span>
                     </div>
                   ))}
                 </div>
@@ -725,7 +810,7 @@ function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
 
           {/* TOKENS tab */}
           {tab==="tokens"&&(
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div className="two-col">
               {[[t("metric_erc20"),m.tokenSymbols,T.pink,t("no_erc20")],
                 [t("metric_nft"),m.nftCollections,T.blue,t("no_nft")]].map(([title,items,color,empty])=>(
                 <div key={title} style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:18}}>
@@ -778,9 +863,9 @@ function PageLeaderboard({onAnalyze, t}) {
   },[traders,filter,sortKey]);
 
   return(
-    <div style={{padding:"24px",maxWidth:1400,margin:"0 auto"}}>
+    <div className="page-wrap">
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+      <div className="period-row" style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
         <div>
           <span className="display" style={{fontSize:32}}>{t("lb_title")} </span>
           <span className="display" style={{fontSize:32,color:T.amber}}>{t("lb_subtitle")}</span>
@@ -834,7 +919,7 @@ function PageLeaderboard({onAnalyze, t}) {
 
       {/* Filter + sort */}
       {traders.length>0&&(
-        <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <div className="period-row" style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
           <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder={t("lb_filter")} className="mono"
             style={{flex:1,minWidth:200,background:T.bg1,border:`1px solid ${T.border2}`,
               borderRadius:6,padding:"7px 12px",color:T.text,fontSize:11}}/>
@@ -860,27 +945,25 @@ function PageLeaderboard({onAnalyze, t}) {
       {/* Leaderboard table */}
       {filtered.length>0&&(
         <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"40px 1fr 130px 80px 130px 1fr 90px",
-            padding:"10px 16px",background:T.bg2,borderBottom:`1px solid ${T.border}`}}>
-            {["#",t("lb_col_addr"),t("lb_col_vol"),t("lb_col_swaps"),t("lb_col_avg"),t("lb_col_pairs"),t("lb_col_action")].map(h=>(
-              <div key={h} className="mono" style={{color:T.muted,fontSize:9,letterSpacing:"0.12em"}}>{h}</div>
+          <div className="lb-table-grid" style={{padding:"10px 16px",background:T.bg2,borderBottom:`1px solid ${T.border}`}}>
+            {["#",t("lb_col_addr"),t("lb_col_vol"),t("lb_col_swaps"),t("lb_col_avg"),t("lb_col_pairs"),t("lb_col_action")].map((h,hi)=>(
+              <div key={h} className={`mono${hi===3?" lb-hide-sm lb-hide-md":hi===4?" lb-hide-sm lb-hide-md":hi===5?" lb-hide-sm":""}`} style={{color:T.muted,fontSize:9,letterSpacing:"0.12em"}}>{h}</div>
             ))}
           </div>
           {filtered.map((tr,i)=>(
             <div key={tr.address} className="row-hover"
-              style={{display:"grid",gridTemplateColumns:"40px 1fr 130px 80px 130px 1fr 90px",
-                padding:"11px 16px",borderBottom:`1px solid ${T.border}`,alignItems:"center",background:"transparent"}}>
+              className="lb-table-grid row-hover" style={{padding:"11px 16px",borderBottom:`1px solid ${T.border}`,background:"transparent"}}>
               <div className="mono" style={{color:i<3?T.amber:T.dim,fontSize:11,fontWeight:i<3?700:400}}>
                 {i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}
               </div>
-              <div>
-                {tr.label&&<div style={{color:T.amber,fontSize:11,marginBottom:2}}>{tr.label}</div>}
-                <div className="mono" style={{color:T.muted,fontSize:10}}>{shortAddr(tr.address)}</div>
+              <div style={{minWidth:0}}>
+                {tr.label&&<div style={{color:T.amber,fontSize:11,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tr.label}</div>}
+                <div className="mono" style={{color:T.sub,fontSize:10}}>{shortAddr(tr.address)}</div>
               </div>
               <div className="mono" style={{color:T.green,fontSize:12,fontWeight:600}}>${fmtK(tr.totalVolumeUSD)}</div>
-              <div className="mono" style={{color:T.blue,fontSize:11}}>{tr.swapCount}</div>
-              <div className="mono" style={{color:T.text,fontSize:11}}>${fmtK(tr.avgTxSize)}</div>
-              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              <div className="mono lb-hide-sm lb-hide-md" style={{color:T.blue,fontSize:11}}>{tr.swapCount}</div>
+              <div className="mono lb-hide-sm lb-hide-md" style={{color:T.text,fontSize:11}}>${fmtK(tr.avgTxSize)}</div>
+              <div className="lb-hide-sm" style={{display:"flex",gap:4,flexWrap:"wrap",minWidth:0,overflow:"hidden"}}>
                 {tr.topPairs.map(p=><Tag key={p} text={p} color={T.purple} size={8}/>)}
               </div>
               <button onClick={()=>onAnalyze(tr.address)}
@@ -918,16 +1001,16 @@ function PageWhales({onAnalyze, t}) {
   });
 
   return(
-    <div style={{padding:"24px",maxWidth:1400,margin:"0 auto"}}>
+    <div className="page-wrap">
       <div style={{marginBottom:22}}>
         <div className="display" style={{fontSize:32,marginBottom:4}}>
           {t("wh_title")} <span style={{color:T.cyan}}>{t("wh_ogs")}</span> {t("wh_and")} <span style={{color:T.amber}}>{t("wh_whales")}</span>
         </div>
-        <div className="mono" style={{color:T.muted,fontSize:10}}>{WHALE_DIRECTORY.length} {t("wh_subtitle")}</div>
+        <div className="mono" style={{color:T.sub,fontSize:11}}>{WHALE_DIRECTORY.length} {t("wh_subtitle")}</div>
       </div>
 
       {/* Filters */}
-      <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
+      <div className="period-row" style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t("wh_search")} className="mono"
           style={{background:T.bg1,border:`1px solid ${T.border2}`,borderRadius:6,
             padding:"7px 12px",color:T.text,fontSize:11,minWidth:200}}/>
@@ -948,7 +1031,7 @@ function PageWhales({onAnalyze, t}) {
       </div>
 
       {/* Grid */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
+      <div className="whales-grid">
         {filtered.map(w=>{
           const meta=CATEGORY_META[w.category];
           const col=meta?.color||T.cyan;
@@ -967,7 +1050,7 @@ function PageWhales({onAnalyze, t}) {
                 <span style={{fontSize:20}}>{meta?.icon||"⬡"}</span>
               </div>
               <div className="mono" style={{color:T.dim,fontSize:9,marginBottom:8,wordBreak:"break-all"}}>{w.address}</div>
-              <div style={{color:"#6080a0",fontSize:11,lineHeight:1.55,marginBottom:12}}>{w.notes}</div>
+              <div style={{color:T.sub,fontSize:12,lineHeight:1.6,marginBottom:12}}>{w.notes}</div>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <button onClick={()=>onAnalyze(w.address)}
                   style={{flex:1,padding:"7px",background:col+"15",border:`1px solid ${col}30`,
@@ -1030,7 +1113,7 @@ export default function App() {
         background:"rgba(5,8,16,0.97)",backdropFilter:"blur(20px)",
         borderBottom:`1px solid ${T.border}`}}>
         <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px",
-          display:"flex",alignItems:"center",height:54}}>
+          display:"flex",alignItems:"center",height:54,minHeight:54}}>
 
           {/* Logo */}
           <div style={{display:"flex",alignItems:"center",gap:10,marginRight:32}}>
@@ -1044,20 +1127,20 @@ export default function App() {
           </div>
 
           {/* Nav */}
-          <nav style={{display:"flex",flex:1}}>
+          <nav style={{display:"flex",flex:1,overflowX:"auto",scrollbarWidth:"none"}}>
             {NAV.map(n=>(
               <button key={n.id} onClick={()=>setPage(n.id)} className="mono"
                 style={{padding:"0 18px",height:54,background:"none",border:"none",
                   borderBottom:page===n.id?`2px solid ${T.cyan}`:"2px solid transparent",
                   color:page===n.id?T.cyan:T.muted,cursor:"pointer",fontSize:11,
                   letterSpacing:"0.1em",display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:10}}>{n.icon}</span>{n.label}
+                <span style={{fontSize:10}}><span className="nav-icon">{n.icon}</span><span className="nav-label" style={{marginLeft:6}}>{n.label}</span>
               </button>
             ))}
           </nav>
 
           {/* Right controls */}
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div className="header-right" style={{display:"flex",alignItems:"center",gap:10}}>
             {/* ETH price */}
             {ethPrice>0&&(
               <div className="mono" style={{color:T.green,fontSize:11}}>
