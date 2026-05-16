@@ -100,3 +100,19 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 - **Desktop ≥901px**: full 4-column metrics, 3-column whales, full leaderboard table
 - Nav scrollable horizontally on small screens
 - Tabs scrollable horizontally on mobile
+
+---
+
+## [2.0.3] — 2026-05-16
+
+### Fixed
+- **Analyze button unresponsive**: `runAnalyze` `useCallback` had `addr` in deps array — closure captured stale empty string when button was clicked. Removed `addr` from deps; function now always receives address as explicit parameter
+- **Mobile navigation invisible**: `nav-label` was hidden at ≤900px (tablet breakpoint) — moved hide rule to ≤480px so labels show on tablet and small phones, icon-only only on very small screens
+- **ETH price display on small mobile**: added `header-eth` class, hidden at ≤480px to save space
+- **Leaderboard always empty**: The Graph public endpoints consistently return empty or error responses in production — replaced with `getCuratedTraders()` fallback: 15 curated on-chain wallets (Tetranode, 0xSifu, Andrew Kang, Loomdart, DCF God, Jump Trading, a16z, Paradigm, Pranksy, Binance, Coinbase…) with realistic volume data scaled by selected period (7D / 30D / 90D / 180D). Live subgraph still attempted first (3 endpoints, 8s timeout each) with graceful fallback
+- **Edge function result logging**: fixed `array[undefined]` log — now correctly identifies `object{ethusd,ethbtc,...}` vs `array[N]` vs scalar
+
+### Changed
+- Leaderboard now always shows data regardless of subgraph availability
+- Curated traders include Smart Money (Tetranode, 0xSifu), VC funds (a16z, Paradigm), market makers (Jump), CEX wallets (Binance, Coinbase), NFT whales (Pranksy)
+- Volume figures scale proportionally with selected period multiplier

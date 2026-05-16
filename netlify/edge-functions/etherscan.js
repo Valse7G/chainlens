@@ -1,4 +1,5 @@
 // netlify/edge-functions/etherscan.js
+// Serverless proxy for Etherscan V2 API — key never reaches the browser
 
 export default async (req, context) => {
   const CORS = {
@@ -16,54 +17,53 @@ export default async (req, context) => {
     Netlify.env.get("VITE_ETHERSCAN_KEY") ||
     "";
 
+  console.log("[etherscan fn] ETHERSCAN_KEY présente:", !!API_KEY, "| longueur:", API_KEY.length);
+
   if (!API_KEY) {
     return new Response(
-      JSON.stringify({ status: "0", message: "NOTOK", result: "ETHERSCAN_KEY manquante" }),
+      JSON.stringify({ status: "0", message: "NOTOK", result: "ETHERSCAN_KEY manquante côté serveur" }),
       { status: 200, headers: { ...CORS, "Content-Type": "application/json" } }
     );
   }
 
-  // Lire les query params envoyés par le client
-  const incomingUrl = new URL(req.url);
-  const sp = incomingUrl.searchParams;
-
-  // Log tous les params reçus pour debug
-  const allParams = {};
-  for (const [k, v] of sp.entries()) allParams[k] = v;
-  console.log("[etherscan fn] params reçus:", JSON.stringify(allParams));
-
-  // Construire l'URL Etherscan — on recopie TOUS les params + on ajoute la clé
+  const { searchParams } = new URL(req.url);
   const esParams = new URLSearchParams();
-  for (const [k, v] of sp.entries()) {
-    if (k !== "apikey") esParams.set(k, v); // ne pas laisser le client surcharger la clé
+
+  // Forward all client params except apikey (we inject server-side)
+  for (const [k, v] of searchParams.entries()) {
+    if (k !== "apikey") esParams.set(k, v);
   }
+  esParams.set("chainid", "1");
   esParams.set("apikey", API_KEY);
 
-  esParams.set("chainid", "1"); // Ethereum mainnet — API V2 obligatoire
   const esUrl = "https://api.etherscan.io/v2/api?" + esParams.toString();
+  console.log("[etherscan fn] params reçus:", JSON.stringify(Object.fromEntries(searchParams)));
   console.log("[etherscan fn] URL →", esUrl.replace(/apikey=[^&]+/, "apikey=***"));
 
   try {
-    const res  = await fetch(esUrl, {
-      headers: { "User-Agent": "ChainLens/1.0" }
+    const res = await fetch(esUrl, {
+      headers: { "User-Agent": "ChainLens/2.0.2" },
     });
     const text = await res.text();
-
-    // Log la réponse brute (premiers 300 chars)
     console.log("[etherscan fn] raw response (300):", text.slice(0, 300));
 
     let data;
     try {
       data = JSON.parse(text);
     } catch {
-      console.error("[etherscan fn] JSON parse failed:", text.slice(0, 200));
       return new Response(
-        JSON.stringify({ status: "0", message: "Invalid JSON from Etherscan", result: text.slice(0, 200) }),
+        JSON.stringify({ status: "0", message: "Invalid JSON", result: text.slice(0, 100) }),
         { status: 200, headers: { ...CORS, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("[etherscan fn] status:", data.status, "| message:", data.message, "| result:", typeof data.result === "string" ? data.result.slice(0,100) : `array[${data.result?.length}]`);
+    // Log result type properly
+    const resultType = Array.isArray(data.result)
+      ? `array[${data.result.length}]`
+      : typeof data.result === "object" && data.result !== null
+        ? `object{${Object.keys(data.result).join(",")}}`
+        : String(data.result).slice(0, 80);
+    console.log("[etherscan fn] status:", data.status, "| message:", data.message, "| result:", resultType);
 
     return new Response(JSON.stringify(data), {
       status: 200,
@@ -72,7 +72,7 @@ export default async (req, context) => {
   } catch (err) {
     console.error("[etherscan fn] fetch error:", err.message);
     return new Response(
-      JSON.stringify({ status: "0", message: "Proxy fetch error: " + err.message }),
+      JSON.stringify({ status: "0", message: "Proxy error: " + err.message }),
       { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
     );
   }
