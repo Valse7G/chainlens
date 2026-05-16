@@ -1,141 +1,192 @@
-# ⬡ ChainLens — On-Chain Intelligence Engine
+# ⬡ ChainLens v2.0.0
 
-Outil d'analyse on-chain Ethereum 100% client-side.  
-**Zéro API IA externe · Zéro coût d'inférence · Etherscan API gratuite**
-
----
-
-## Architecture des agents autonomes
-
-| Agent | Rôle |
-|---|---|
-| `computeMetrics` | Calcule ~30 métriques brutes depuis les tx on-chain |
-| `ProfilerAgent` | Classifie le wallet (Whale, Bot, DeFi, HODLer…) |
-| `BehaviorAgent` | Détecte les patterns comportementaux avec valeurs réelles |
-| `RiskAgent` | Score de risque 0–100 (mixer, blacklist, cycling, dust…) |
-| `ScoreEngine` | Trust Score agrégé 0–100 |
-| `NarrativeGenerator` | Résumé textuel data-driven |
+**On-chain intelligence engine for Ethereum wallets.**
+Bilingual (EN/FR) · Zero external AI API · Etherscan V2 · Uniswap V3 Subgraph · 100% client-side.
 
 ---
 
-## Structure du projet
+## Features
+
+### Analyze Page
+- Wallet profiling via 4 autonomous agents (Profiler, Behaviour, Risk, Score Engine)
+- D3.js force-directed relationship graph — up to 60 counterparties, zoomable, draggable
+- 8 on-chain metrics (balance, tx count, gas, ERC-20 tokens, NFT collections…)
+- Trust Score 0–100 computed from 20+ signals
+- Risk detection: Tornado Cash, cycling patterns, dust attacks, MEV signals
+
+### Leaderboard Page
+- Top 100 Uniswap V3 traders by volume — live from The Graph subgraph
+- Configurable periods: 7 / 30 / 90 / 180 days
+- Insider cluster detection: wallets buying the same tokens → coordination signals
+- Hot token heatmap across top traders
+- One-click → Analyze any trader
+
+### Whales & OGs Page
+- 20+ curated Ethereum OGs, whales, CEXs, DeFi protocols, VC funds, NFT whales
+- Filter by category: OG · Exchange · Protocol · DeFi · Fund · NFT · Whale
+- Direct links: Etherscan · Twitter/X · One-click analyze
+
+### UI/UX
+- Dark terminal aesthetic — `IBM Plex Mono` + `Bebas Neue` + `DM Sans`
+- Bilingual EN/FR toggle (default: English)
+- Responsive grid layout
+- Netlify Edge Function proxy — API key never exposed to browser
+
+---
+
+## Architecture
 
 ```
 chainlens/
-├── index.html
+├── index.html                    # Vite entry
 ├── package.json
 ├── vite.config.js
-├── netlify.toml
+├── netlify.toml                  # Build config + Edge Function route
 ├── .gitignore
+├── README.md
+├── CHANGELOG.md
 └── src/
-    ├── main.jsx
-    └── App.jsx          ← moteur complet + UI
+    ├── main.jsx                  # React root + Error Boundary
+    ├── App.jsx                   # Full application (3 pages + agents)
+    ├── i18n.js                   # Bilingual translations EN/FR
+    └── data/
+        └── whales.js             # Whale & OG directory (static)
+└── netlify/
+    └── edge-functions/
+        └── etherscan.js          # Serverless proxy for Etherscan V2 API
 ```
 
 ---
 
-## 🚀 Déploiement sur Netlify via GitHub
+## Autonomous Agent Stack
 
-### Étape 1 — Préparer le dépôt local
+All analysis runs client-side. Zero LLM calls.
+
+| Agent | Input | Output |
+|---|---|---|
+| `computeMetrics` | raw tx list | 30+ computed metrics |
+| `ProfilerAgent` | metrics | wallet profile + boolean flags |
+| `BehaviorAgent` | metrics | behavioral insights (templated, data-driven) |
+| `RiskAgent` | metrics | risk signals + score 0–100 |
+| `ScoreEngine` | all above | trust score 0–100 |
+| `NarrativeGenerator` | all above | natural language summary |
+
+### ProfilerAgent — detected profiles
+`Smart Contract` · `Bot / Automated` · `Whale` · `Exchange / Market Maker` · `DeFi & NFT Power User` · `DeFi Power User` · `NFT Trader` · `Mid-size Holder` · `Long-term HODLer` · `Active Trader` · `Dormant Wallet` · `Recent Wallet` · `Retail User`
+
+### RiskAgent — detected signals
+- Tornado Cash / mixer interactions
+- Cycling pattern (many tx, few counterparties)
+- Fresh wallet with high volume
+- Dust attack targeting
+- Bot with zero-error + burst signatures
+- MEV signals (high gas + high frequency)
+
+---
+
+## Deployment
+
+### Prerequisites
+- Node.js 20+
+- Etherscan API key (free at [etherscan.io/apis](https://etherscan.io/apis))
+- GitHub account
+- Netlify account (free tier)
+
+### Local Development
 
 ```bash
-# Crée le dossier du projet
-mkdir chainlens && cd chainlens
-
-# Copie tous les fichiers livrés dans ce dossier
-# (index.html, package.json, vite.config.js, netlify.toml, .gitignore, src/)
-
-# Initialise Git
-git init
-git add .
-git commit -m "feat: init ChainLens on-chain analyzer"
+git clone https://github.com/YOUR_USERNAME/chainlens.git
+cd chainlens
+npm install
+npm run dev   # → http://localhost:5173
 ```
 
-### Étape 2 — Pousser sur GitHub
+In local dev, enter your Etherscan key in the **⚙ API** panel.
+The app calls Etherscan directly (no proxy needed locally).
 
+### Deploy to Netlify
+
+**1. Push to GitHub**
 ```bash
-# Sur github.com → New repository → nom : chainlens (public ou private)
-# Puis dans le terminal :
-
-git remote add origin https://github.com/TON_USERNAME/chainlens.git
+git init
+git add .
+git commit -m "feat: ChainLens v2.0.0"
+git remote add origin https://github.com/YOUR_USERNAME/chainlens.git
 git branch -M main
 git push -u origin main
 ```
 
-### Étape 3 — Connecter Netlify
+**2. Connect Netlify**
+- app.netlify.com → Add new site → Import from GitHub → select `chainlens`
+- Build settings are auto-detected from `netlify.toml`
 
-1. Va sur **[app.netlify.com](https://app.netlify.com)** → **Add new site** → **Import an existing project**
-2. Choisis **GitHub** → autorise Netlify → sélectionne le repo `chainlens`
-3. Netlify détecte automatiquement `netlify.toml` — les champs sont pré-remplis :
-   - **Build command** : `npm run build`
-   - **Publish directory** : `dist`
-4. Clique **Deploy site**
+**3. Set environment variable**
+- Netlify → Site configuration → Environment variables
+- Add: `ETHERSCAN_KEY` = `your_api_key_here`
+- ⚠️ Use `ETHERSCAN_KEY` (not `VITE_ETHERSCAN_KEY`) — the Edge Function runs server-side
 
-Le premier build prend ~60 secondes. Netlify donne une URL du type :  
-`https://chainlens-abc123.netlify.app`
+**4. Trigger deploy**
+- Deploys → Trigger deploy → Deploy site
 
-### Étape 4 (optionnel) — Clé Etherscan en variable d'environnement
+**5. Verify**
+- Netlify → Functions → Edge Functions → `etherscan` → logs should show `ETHERSCAN_KEY présente: true`
 
-Pour ne pas hardcoder la clé dans le code source :
-
-1. Netlify → ton site → **Site configuration** → **Environment variables**
-2. Ajoute : `VITE_ETHERSCAN_KEY` = `ta_clé_etherscan`
-3. Dans `src/App.jsx`, remplace la ligne :
-   ```js
-   let ES_KEY = "YourApiKeyToken";
-   ```
-   par :
-   ```js
-   let ES_KEY = import.meta.env.VITE_ETHERSCAN_KEY || "YourApiKeyToken";
-   ```
-4. Redeploy → **Trigger deploy** → **Deploy site**
-
-### Étape 5 — Domaine custom (optionnel)
-
-Netlify → **Domain management** → **Add custom domain**  
-Exemple : `chainlens.mondomaine.com`  
-Ajoute un CNAME chez ton registrar pointant vers l'URL Netlify.  
-SSL Let's Encrypt est automatique.
-
----
-
-## Workflow de mise à jour
-
-Chaque `git push` sur `main` déclenche un redéploiement automatique :
+### Update Workflow
 
 ```bash
-# Modifier App.jsx, puis :
-git add src/App.jsx
-git commit -m "fix: amélioration RiskAgent"
+# After editing any file:
+git add .
+git commit -m "fix: description"
 git push
-# → Netlify rebuild automatiquement en ~45s
+# → Netlify auto-rebuilds in ~45s
 ```
 
 ---
 
-## Développement local
+## Environment Variables
 
-```bash
-npm install
-npm run dev
-# → http://localhost:5173
-```
-
----
-
-## Clé API Etherscan
-
-- Gratuite sur [etherscan.io/apis](https://etherscan.io/apis)
-- Limite : **5 req/s** avec clé gratuite (largement suffisant)
-- Sans clé : mode demo Etherscan (~1 req/s, peut timeout)
+| Variable | Scope | Required | Notes |
+|---|---|---|---|
+| `ETHERSCAN_KEY` | Netlify (server) | Yes | Used by Edge Function — never sent to browser |
+| `VITE_ETHERSCAN_KEY` | Vite (client build) | No | Not needed for production; only for local testing without the panel |
 
 ---
 
-## Limites connues
+## External APIs
 
-| Limite | Détail |
+| Service | Usage | Cost | Auth |
+|---|---|---|---|
+| Etherscan V2 | Balance, txlist, tokentx, tokennfttx, getabi, ethprice | Free (5 req/s) | API key via Edge Function |
+| The Graph | Uniswap V3 swaps subgraph | Free (public) | None |
+
+No AI APIs. No paid services required.
+
+---
+
+## i18n
+
+Two locales supported: `en` (default) and `fr`.
+All UI strings are in `src/i18n.js` under the `translations` object.
+
+To add a language:
+1. Add a new key to `LOCALES` in `i18n.js`
+2. Add a full translation block under `translations`
+3. Add the label to `LOCALE_LABELS`
+
+---
+
+## Known Limitations
+
+| Item | Detail |
 |---|---|
-| 500 tx max | Etherscan free tier offset limit |
-| ETH Mainnet uniquement | Pas de support BSC/Polygon dans cette version |
-| Pas de données MEV | Nécessiterait Flashbots API |
-| Labels d'adresses | Base statique — pas de lookup Etherscan labels API |
+| 500 tx cap | Etherscan free tier `offset` limit |
+| ETH mainnet only | `chainid=1` hardcoded; multi-chain in roadmap |
+| Subgraph rate limits | The Graph public endpoint may throttle under load |
+| Static whale directory | Labels not dynamically fetched from Etherscan Labels API |
+| PnL estimation | Volume-based proxy only — not exact realized PnL |
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE)

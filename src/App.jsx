@@ -1,1030 +1,1092 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+/**
+ * ChainLens v2.0.0 — Main Application
+ * On-chain intelligence engine. Bilingual EN/FR.
+ * No external AI API. Etherscan V2. Uniswap V3 Subgraph.
+ */
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as d3 from "d3";
+import { WHALE_DIRECTORY, CATEGORY_META } from "./data/whales.js";
+import { createT, LOCALES, LOCALE_LABELS } from "./i18n.js";
 
-/* ═══════════════════════════════════════════════════════════════════════════
+/* ─────────────────────────────────────────────────────────────────────
+   DESIGN TOKENS
+───────────────────────────────────────────────────────────────────── */
+const T = {
+  bg:"#050810", bg1:"#080d1a", bg2:"#0c1525",
+  border:"#0f2040", border2:"#1a3a60",
+  cyan:"#00f5d4", red:"#ff3366", amber:"#ffb700",
+  purple:"#a78bfa", green:"#34d399", blue:"#60a5fa", pink:"#e879f9",
+  text:"#e2e8f0", muted:"#4a6080", dim:"#1e3a5f",
+};
+
+const GLOBAL_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;700&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:${T.bg};color:${T.text};font-family:'DM Sans',sans-serif;overflow-x:hidden}
+  ::-webkit-scrollbar{width:3px;background:${T.bg}}
+  ::-webkit-scrollbar-thumb{background:${T.dim};border-radius:2px}
+  input,button{font-family:inherit;outline:none}
+  a{font-family:inherit}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes halo{0%,100%{r:36;opacity:0.18}50%{r:44;opacity:0.07}}
+  .mono{font-family:'IBM Plex Mono',monospace}
+  .display{font-family:'Bebas Neue',sans-serif;letter-spacing:0.05em}
+  .fadeUp{animation:fadeUp 0.35s ease both}
+  .spin{animation:spin 0.8s linear infinite}
+  .row-hover{transition:background 0.1s}
+  .row-hover:hover{background:${T.bg2}!important}
+  .card-hover{transition:border-color 0.2s,transform 0.15s}
+  .card-hover:hover{transform:translateY(-2px)}
+`;
+
+/* ─────────────────────────────────────────────────────────────────────
    HELPERS
-═══════════════════════════════════════════════════════════════════════════ */
-const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
+───────────────────────────────────────────────────────────────────── */
+const shortAddr = (a) => a ? `${a.slice(0,6)}…${a.slice(-4)}` : "";
 const weiToEth  = (w) => Number(w) / 1e18;
-const fmt       = (n, d = 3) => Number(n).toFixed(d);
-const fmtK      = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-const ago       = (ts) => {
-  const d = Math.floor((Date.now() / 1000 - ts) / 86400);
-  if (d < 1)   return "aujourd'hui";
-  if (d < 30)  return `il y a ${d} j`;
-  if (d < 365) return `il y a ${Math.floor(d / 30)} mois`;
-  return `il y a ${(d / 365).toFixed(1)} ans`;
+const fmt       = (n, d=3) => Number(n).toFixed(d);
+const fmtK      = (n) => n>=1e9?`${(n/1e9).toFixed(1)}B`:n>=1e6?`${(n/1e6).toFixed(1)}M`:n>=1e3?`${(n/1e3).toFixed(1)}K`:String(Math.round(n));
+const ago       = (ts, t) => {
+  const d = Math.floor((Date.now()/1000 - ts)/86400);
+  if (d<1) return "today";
+  if (d<30) return `${d}d ago`;
+  if (d<365) return `${Math.floor(d/30)}mo ago`;
+  return `${(d/365).toFixed(1)}y ago`;
 };
 
-/* ── Known entity labels ── */
-const KNOWN = {
-  "0xd8da6bf26964af9d7eed9e03e53415d37aa96045": "Vitalik Buterin",
-  "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be": "Binance Hot 1",
-  "0x28c6c06298d514db089934071355e5743bf21d60": "Binance 14",
-  "0x21a31ee1afc51d94c2efccaa2092ad1028285549": "Binance 15",
-  "0xbe0eb53f46cd790cd13851d5eff43d12404d33e8": "Binance Cold",
-  "0x00000000219ab540356cbb839cbe05303d7705fa": "ETH2 Deposit",
-  "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "WETH",
-  "0x7a250d5630b4cf539739df2c5dacb4c659f2488d": "Uniswap V2 Router",
-  "0xe592427a0aece92de3edee1f18e0157c05861564": "Uniswap V3 Router",
-  "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45": "Uniswap V3 Router2",
-  "0x1111111254fb6c44bac0bed2854e76f90643097d": "1inch Router",
-  "0xdef1c0ded9bec7f1a1670819833240f027b25eff": "0x Exchange",
-  "0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f": "SushiSwap Router",
-  "0x881d40237659c251811cec9c364ef91dc08d300c": "MetaMask Router",
-  "0xba12222222228d8ba445958a75a0704d566bf2c8": "Balancer Vault",
-  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "USDC",
-  "0xdac17f958d2ee523a2206206994597c13d831ec7": "USDT",
-  "0x6b175474e89094c44da98b954eedeac495271d0f": "DAI",
-  "0x722122df12d4e14e13ac3b6895a86e84145b6967": "⚠ Tornado Cash",
-  "0xdd4c48c0b24039969fc16d1cdf626eab821d3384": "⚠ Tornado Cash",
-  "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b": "⚠ Tornado Cash",
-};
-const MIXERS = new Set([
-  "0x722122df12d4e14e13ac3b6895a86e84145b6967",
-  "0xdd4c48c0b24039969fc16d1cdf626eab821d3384",
-  "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b",
-]);
-const BLACKLIST = new Set([
-  "0x8576acc5c05d6ce88f4e49bf65bdf0c62f91353c",
-  "0xd882cfc20f52f2599d84b8e8d58c7fb62cfe344b",
-]);
+const KNOWN = Object.fromEntries(WHALE_DIRECTORY.map(w => [w.address.toLowerCase(), w.name]));
 const getLabel = (a) => KNOWN[a?.toLowerCase()] ?? null;
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ETHERSCAN FETCHERS
-═══════════════════════════════════════════════════════════════════════════ */
-// ── Proxy Netlify Edge Function — clé jamais exposée côté client
+/* ─────────────────────────────────────────────────────────────────────
+   ETHERSCAN PROXY (Netlify Edge Function in prod, direct in dev)
+───────────────────────────────────────────────────────────────────── */
 const IS_DEV = typeof window !== "undefined" && window.location.hostname === "localhost";
 let _devKey = "";
 
-// Construit une URL propre avec URLSearchParams
 function buildUrl(fields) {
   const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(fields)) {
-    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
-  }
-  if (IS_DEV) {
-    // Dev local : appel direct Etherscan avec clé du champ
-    p.set("apikey", _devKey);
-    return "https://api.etherscan.io/api?" + p.toString();
-  }
-  // Production : proxy Edge Function (clé côté serveur)
-  return "/api/etherscan?" + p.toString();
+  for (const [k,v] of Object.entries(fields)) if (v!=null && v!=="") p.set(k, String(v));
+  if (IS_DEV) { p.set("apikey", _devKey); return "https://api.etherscan.io/v2/api?" + p; }
+  return "/api/etherscan?" + p;
 }
 
-async function safeJson(url, fallback = null) {
+async function safeJson(url, fallback=null) {
   try {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.status === "0") {
-      const msg = ((j.message || "") + " " + (j.result || "")).toLowerCase();
-      console.warn("[Etherscan NOTOK]", j.message, "|", j.result);
+      const msg = ((j.message||"") + " " + (j.result||"")).toLowerCase();
+      console.warn("[Etherscan]", j.message, "|", j.result);
       if (msg.includes("no transactions") || msg.includes("no records")) return [];
       return fallback;
     }
     return j.status === "1" ? j.result : fallback;
-  } catch (e) {
-    console.warn("[safeJson error]", e.message);
-    return fallback;
-  }
+  } catch(e) { console.warn("[safeJson]", e.message); return fallback; }
 }
 
-const fetchBalance    = (a) => safeJson(buildUrl({ module:"account", action:"balance",     address:a, tag:"latest" }), "0").then(r => r ? weiToEth(r) : 0);
-const fetchTxList     = (a) => safeJson(buildUrl({ module:"account", action:"txlist",      address:a, startblock:0, endblock:99999999, page:1, offset:500, sort:"desc" }), []).then(r => Array.isArray(r) ? r : []);
-const fetchTokenTx    = (a) => safeJson(buildUrl({ module:"account", action:"tokentx",     address:a, startblock:0, endblock:99999999, page:1, offset:200, sort:"desc" }), []).then(r => Array.isArray(r) ? r : []);
-const fetchNFTTx      = (a) => safeJson(buildUrl({ module:"account", action:"tokennfttx", address:a, startblock:0, endblock:99999999, page:1, offset:100, sort:"desc" }), []).then(r => Array.isArray(r) ? r : []);
-const fetchIsContract = (a) => safeJson(buildUrl({ module:"contract", action:"getabi",    address:a }), null).then(r => !!r);
-const fetchEthPrice   = ()  => safeJson(buildUrl({ module:"stats",   action:"ethprice" }), null).then(r => r ? Number(r.ethusd) : 0);
+const fetchBalance    = (a) => safeJson(buildUrl({module:"account",action:"balance",address:a,tag:"latest"}),"0").then(r=>r?weiToEth(r):0);
+const fetchTxList     = (a) => safeJson(buildUrl({module:"account",action:"txlist",address:a,startblock:0,endblock:99999999,page:1,offset:500,sort:"desc"}),[]).then(r=>Array.isArray(r)?r:[]);
+const fetchTokenTx    = (a) => safeJson(buildUrl({module:"account",action:"tokentx",address:a,startblock:0,endblock:99999999,page:1,offset:200,sort:"desc"}),[]).then(r=>Array.isArray(r)?r:[]);
+const fetchNFTTx      = (a) => safeJson(buildUrl({module:"account",action:"tokennfttx",address:a,startblock:0,endblock:99999999,page:1,offset:100,sort:"desc"}),[]).then(r=>Array.isArray(r)?r:[]);
+const fetchIsContract = (a) => safeJson(buildUrl({module:"contract",action:"getabi",address:a}),null).then(r=>!!r);
+const fetchEthPrice   = ()  => safeJson(buildUrl({module:"stats",action:"ethprice"}),null).then(r=>r?Number(r.ethusd):0);
 
-/* ═══════════════════════════════════════════════════════════════════════════
+/* ─────────────────────────────────────────────────────────────────────
+   UNISWAP V3 SUBGRAPH
+───────────────────────────────────────────────────────────────────── */
+const GRAPH_URL = "https://gateway.thegraph.com/api/public/query/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV";
+
+async function fetchTopUniswapTraders(days=30) {
+  const since = Math.floor(Date.now()/1000) - days*86400;
+  const query = `{
+    swaps(first:1000,orderBy:amountUSD,orderDirection:desc,where:{timestamp_gt:${since}}){
+      sender recipient amountUSD timestamp
+      token0{symbol} token1{symbol}
+    }
+  }`;
+  try {
+    const r = await fetch(GRAPH_URL, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query})});
+    const j = await r.json();
+    const swaps = j?.data?.swaps || [];
+    const traders = new Map();
+    for (const s of swaps) {
+      const addr = (s.sender||"").toLowerCase();
+      if (!addr || addr==="0x0000000000000000000000000000000000000000") continue;
+      if (!traders.has(addr)) traders.set(addr,{address:addr,swapCount:0,totalVolumeUSD:0,tokens:new Map(),lastSeen:0});
+      const tr = traders.get(addr);
+      tr.swapCount++;
+      tr.totalVolumeUSD += Number(s.amountUSD)||0;
+      tr.lastSeen = Math.max(tr.lastSeen, Number(s.timestamp)||0);
+      const pair = `${s.token0?.symbol}/${s.token1?.symbol}`;
+      tr.tokens.set(pair,(tr.tokens.get(pair)||0)+1);
+    }
+    return [...traders.values()]
+      .map(tr=>({...tr, label:getLabel(tr.address),
+        topPairs:[...tr.tokens.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p])=>p),
+        avgTxSize: tr.totalVolumeUSD/Math.max(tr.swapCount,1)}))
+      .sort((a,b)=>b.totalVolumeUSD-a.totalVolumeUSD).slice(0,100);
+  } catch(e) { console.warn("[Uniswap Subgraph]", e.message); return []; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   INSIDER ANALYSIS ENGINE
+───────────────────────────────────────────────────────────────────── */
+function analyzeInsiders(traders) {
+  if (!traders.length) return {hotTokens:[],insiderGroups:[]};
+  const tokenMap = new Map();
+  for (const t of traders) for (const p of t.topPairs) tokenMap.set(p,(tokenMap.get(p)||0)+1);
+  const hotTokens = [...tokenMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10)
+    .map(([token,count])=>({token,count,traders:traders.filter(t=>t.topPairs.includes(token)).slice(0,5)}));
+  const groups = [];
+  for (let i=0;i<Math.min(traders.length,20);i++)
+    for (let j=i+1;j<Math.min(traders.length,20);j++){
+      const shared=traders[i].topPairs.filter(p=>traders[j].topPairs.includes(p));
+      if(shared.length>=2) groups.push({a:traders[i],b:traders[j],sharedTokens:shared,strength:shared.length});
+    }
+  return {hotTokens, insiderGroups:groups.sort((a,b)=>b.strength-a.strength).slice(0,5)};
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   AUTONOMOUS ANALYSIS ENGINE
+───────────────────────────────────────────────────────────────────── */
+function computeMetrics(addr,txList,tokenTx,nftTx,balance,isContract) {
+  const ca=addr.toLowerCase();
+  const ts=txList.map(t=>Number(t.timeStamp)).filter(Boolean).sort((a,b)=>a-b);
+  const firstTs=ts[0]??Math.floor(Date.now()/1000);
+  const lastTs=ts[ts.length-1]??Math.floor(Date.now()/1000);
+  const agedays=Math.max(1,(lastTs-firstTs)/86400);
+  const daysSinceLast=(Date.now()/1000-lastTs)/86400;
+  const outTx=txList.filter(t=>t.from?.toLowerCase()===ca);
+  const inTx=txList.filter(t=>t.to?.toLowerCase()===ca);
+  const totalSent=outTx.reduce((s,t)=>s+weiToEth(t.value||0),0);
+  const totalReceived=inTx.reduce((s,t)=>s+weiToEth(t.value||0),0);
+  const uniqueCount=new Set(txList.flatMap(t=>[t.from?.toLowerCase(),t.to?.toLowerCase()]).filter(a=>a&&a!==ca)).size;
+  const gasTotal=txList.reduce((s,t)=>s+(Number(t.gasUsed||0)*Number(t.gasPrice||0))/1e18,0);
+  const avgGasPrice=txList.length?txList.reduce((s,t)=>s+Number(t.gasPrice||0),0)/txList.length/1e9:0;
+  const values=txList.map(t=>weiToEth(t.value||0)).filter(v=>v>0);
+  const avgTxValue=values.length?values.reduce((s,v)=>s+v,0)/values.length:0;
+  const maxTxValue=values.length?Math.max(...values):0;
+  const errorCount=txList.filter(t=>t.isError==="1").length;
+  const errorRate=txList.length?errorCount/txList.length:0;
+  const hourDist=new Array(24).fill(0);
+  for(const tx of txList) hourDist[new Date(Number(tx.timeStamp)*1000).getUTCHours()]++;
+  const nightShare=hourDist.slice(0,6).reduce((a,b)=>a+b,0)/Math.max(txList.length,1);
+  const peakHour=hourDist.indexOf(Math.max(...hourDist));
+  const outTs=outTx.map(t=>Number(t.timeStamp)).sort((a,b)=>a-b);
+  const gaps=outTs.slice(1).map((t,i)=>t-outTs[i]);
+  const minGap=gaps.length?Math.min(...gaps):Infinity;
+  const burstCount=gaps.filter(g=>g<60).length;
+  const tokenSymbols=[...new Set(tokenTx.map(t=>t.tokenSymbol).filter(Boolean))];
+  const nftCollections=[...new Set(nftTx.map(t=>t.tokenName).filter(Boolean))];
+  const dexSet=new Set(["0x7a250d5630b4cf539739df2c5dacb4c659f2488d","0xe592427a0aece92de3edee1f18e0157c05861564","0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45","0x1111111254fb6c44bac0bed2854e76f90643097d","0xdef1c0ded9bec7f1a1670819833240f027b25eff","0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f"]);
+  const dexTxCount=txList.filter(t=>dexSet.has(t.to?.toLowerCase())).length;
+  const MIXERS=new Set(["0x722122df12d4e14e13ac3b6895a86e84145b6967","0xdd4c48c0b24039969fc16d1cdf626eab821d3384","0xd90e2f925da726b50c4ed8d0fb90ad053324f31b"]);
+  const mixerTxCount=txList.filter(t=>MIXERS.has(t.to?.toLowerCase())||MIXERS.has(t.from?.toLowerCase())).length;
+  const dustReceived=inTx.filter(t=>{const v=weiToEth(t.value||0);return v>0&&v<0.0001;}).length;
+  const txPerDay=txList.length/agedays;
+  return {address:ca,isContract,balance,firstTs,lastTs,agedays,daysSinceLast,
+    firstDate:new Date(firstTs*1000).toLocaleDateString("en-GB"),
+    lastDate:new Date(lastTs*1000).toLocaleDateString("en-GB"),
+    txCount:txList.length,outCount:outTx.length,inCount:inTx.length,
+    totalSent,totalReceived,totalVolume:totalSent+totalReceived,
+    avgTxValue,maxTxValue,uniqueCount,gasTotal,avgGasPrice,
+    errorCount,errorRate,hourDist,nightShare,peakHour,txPerDay,
+    minGap,burstCount,tokenSymbols,tokenCount:tokenSymbols.length,
+    nftCollections,nftCount:nftCollections.length,dexTxCount,mixerTxCount,dustReceived};
+}
+
+/** ProfilerAgent — classifies wallet type from computed metrics */
+function ProfilerAgent(m, t) {
+  const flags={};
+  flags.IS_CONTRACT=m.isContract;
+  flags.IS_WHALE=!m.isContract&&(m.balance>500||m.totalVolume>10000);
+  flags.IS_MINI_WHALE=!m.isContract&&!flags.IS_WHALE&&(m.balance>50||m.totalVolume>1000);
+  flags.IS_EXCHANGE_LIKE=!m.isContract&&m.uniqueCount>150&&m.txCount>300;
+  flags.IS_DEFI_HEAVY=!m.isContract&&m.dexTxCount>20&&m.tokenCount>10;
+  flags.IS_NFT_TRADER=!m.isContract&&m.nftCount>5;
+  flags.IS_HOT_WALLET=!m.isContract&&m.txPerDay>8;
+  flags.IS_BOT_LIKE=!m.isContract&&(m.burstCount>5||(m.nightShare>0.4&&m.txPerDay>3));
+  flags.IS_HODLER=!m.isContract&&m.balance>1&&m.txPerDay<0.1&&m.outCount<10;
+  flags.IS_DORMANT=!m.isContract&&m.daysSinceLast>365;
+  flags.IS_FRESH=!m.isContract&&m.agedays<30;
+  flags.IS_RETAIL=!m.isContract&&m.balance<0.5&&m.txCount<30;
+  let profileKey="profile_standard";
+  if(flags.IS_CONTRACT) profileKey="profile_contract";
+  else if(flags.IS_BOT_LIKE&&flags.IS_HOT_WALLET) profileKey="profile_bot";
+  else if(flags.IS_WHALE) profileKey="profile_whale";
+  else if(flags.IS_EXCHANGE_LIKE) profileKey="profile_exchange";
+  else if(flags.IS_DEFI_HEAVY&&flags.IS_NFT_TRADER) profileKey="profile_defi_nft";
+  else if(flags.IS_DEFI_HEAVY) profileKey="profile_defi";
+  else if(flags.IS_NFT_TRADER) profileKey="profile_nft";
+  else if(flags.IS_MINI_WHALE) profileKey="profile_midwhale";
+  else if(flags.IS_HODLER) profileKey="profile_hodler";
+  else if(flags.IS_HOT_WALLET) profileKey="profile_active";
+  else if(flags.IS_DORMANT) profileKey="profile_dormant";
+  else if(flags.IS_FRESH) profileKey="profile_fresh";
+  else if(flags.IS_RETAIL) profileKey="profile_retail";
+  return {profile: t(profileKey), flags};
+}
+
+/** BehaviorAgent — detects behavioral patterns, all strings i18n-aware */
+function BehaviorAgent(m, t) {
+  const B=[];
+  if(m.txPerDay>20) B.push({icon:"⚡",cat:"Activity",key:"beh_very_high",text:t("beh_very_high",m.txPerDay.toFixed(1),Math.round(m.agedays))});
+  else if(m.txPerDay>5) B.push({icon:"🔄",cat:"Activity",text:t("beh_high",m.txPerDay.toFixed(1))});
+  else if(m.txPerDay<0.05) B.push({icon:"😴",cat:"Activity",text:t("beh_low_freq",m.txPerDay.toFixed(3))});
+  else B.push({icon:"📊",cat:"Activity",text:t("beh_moderate",m.txPerDay.toFixed(2))});
+  const peak=`${m.peakHour}h–${m.peakHour+1}h UTC`;
+  if(m.nightShare>0.45) B.push({icon:"🌙",cat:"Timing",text:t("beh_night_high",(m.nightShare*100).toFixed(0),peak)});
+  else B.push({icon:"☀️",cat:"Timing",text:t("beh_day",peak)});
+  if(m.burstCount>10) B.push({icon:"💥",cat:"Behaviour",text:t("beh_burst",m.burstCount,m.minGap)});
+  const ratio=m.totalSent/Math.max(m.totalReceived,0.0001);
+  if(ratio>10) B.push({icon:"📤",cat:"Flow",text:t("beh_emitter",fmt(m.totalSent),fmt(m.totalReceived),ratio.toFixed(1))});
+  else if(ratio<0.1) B.push({icon:"📥",cat:"Flow",text:t("beh_accumulator",fmt(m.totalReceived),fmt(m.totalSent))});
+  else B.push({icon:"↔️",cat:"Flow",text:t("beh_balanced",fmt(m.totalSent),fmt(m.totalReceived))});
+  if(m.avgTxValue>50) B.push({icon:"💰",cat:"Size",text:t("beh_big_txn",fmt(m.avgTxValue),fmt(m.maxTxValue))});
+  else if(m.avgTxValue>0) B.push({icon:"📦",cat:"Size",text:t("beh_small_txn",fmt(m.avgTxValue))});
+  if(m.errorRate>0.15) B.push({icon:"❌",cat:"Quality",text:t("beh_high_error",(m.errorRate*100).toFixed(1),m.errorCount,m.txCount)});
+  else if(m.errorRate===0&&m.txCount>50) B.push({icon:"🤖",cat:"Quality",text:t("beh_zero_error",m.txCount)});
+  else if(m.txCount>0) B.push({icon:"✅",cat:"Quality",text:t("beh_normal_error",(m.errorRate*100).toFixed(1))});
+  if(m.dexTxCount>50) B.push({icon:"🦄",cat:"DeFi",text:t("beh_defi_heavy",m.dexTxCount,(m.dexTxCount/m.txCount*100).toFixed(0))});
+  else if(m.dexTxCount>0) B.push({icon:"🔁",cat:"DeFi",text:t("beh_defi_some",m.dexTxCount)});
+  if(m.avgGasPrice>100) B.push({icon:"⛽",cat:"Gas",text:t("beh_gas_high",m.avgGasPrice.toFixed(0))});
+  else if(m.avgGasPrice>0) B.push({icon:"💚",cat:"Gas",text:t("beh_gas_low",m.avgGasPrice.toFixed(1),fmt(m.gasTotal,4))});
+  return B;
+}
+
+/** RiskAgent — scores risk signals 0–100 */
+function RiskAgent(m, t) {
+  const risks=[]; let score=0;
+  if(m.mixerTxCount>0){risks.push({level:m.mixerTxCount>5?"CRITICAL":"HIGH",msg:t("risk_mixer",m.mixerTxCount)});score+=m.mixerTxCount>5?45:30;}
+  if(m.agedays<14&&m.totalVolume>10){risks.push({level:"HIGH",msg:t("risk_fresh_high",Math.round(m.agedays),fmt(m.totalVolume))});score+=25;}
+  if(m.txCount>30&&m.uniqueCount<=3){risks.push({level:"HIGH",msg:t("risk_cycling",m.txCount,m.uniqueCount)});score+=30;}
+  if(m.dustReceived>=5){risks.push({level:"MEDIUM",msg:t("risk_dust",m.dustReceived)});score+=12;}
+  if(m.errorRate===0&&m.txCount>100&&m.burstCount>10){risks.push({level:"MEDIUM",msg:t("risk_bot_precise",m.burstCount)});score+=10;}
+  if(m.avgGasPrice>200&&m.txPerDay>10){risks.push({level:"LOW",msg:t("risk_mev",m.avgGasPrice.toFixed(0))});score+=8;}
+  if(risks.length===0) risks.push({level:"SAFE",msg:t("risk_safe")});
+  return{risks,riskScore:Math.min(score,100)};
+}
+
+/** ScoreEngine — weighted trust score 0–100 */
+function ScoreEngine(m, flags, riskScore) {
+  let s=50;
+  if(m.agedays>1460)s+=18;else if(m.agedays>730)s+=12;else if(m.agedays>180)s+=6;else if(m.agedays<14)s-=18;else if(m.agedays<30)s-=10;
+  if(m.txCount>500)s+=10;else if(m.txCount>100)s+=6;else if(m.txCount>20)s+=3;else if(m.txCount<3)s-=8;
+  if(m.tokenCount>15)s+=8;else if(m.tokenCount>5)s+=4;
+  if(m.dexTxCount>20)s+=6;if(m.uniqueCount>100)s+=8;else if(m.uniqueCount>20)s+=4;
+  if(m.balance>100)s+=10;else if(m.balance>10)s+=6;else if(m.balance>1)s+=3;else if(m.balance<0.001)s-=5;
+  if(flags.IS_DEFI_HEAVY)s+=6;if(flags.IS_WHALE||flags.IS_MINI_WHALE)s+=5;
+  if(flags.IS_BOT_LIKE)s-=8;if(flags.IS_DORMANT)s-=6;if(flags.IS_FRESH)s-=10;
+  s-=riskScore*0.65;
+  return Math.max(0,Math.min(100,Math.round(s)));
+}
+
+/** NarrativeGenerator — data-driven summary, fully translated */
+function NarrativeGen(m, profile, riskResult, trustScore, t) {
+  const rl=riskResult.riskScore>60?t("nar_high_risk"):riskResult.riskScore>30?t("nar_med_risk"):t("nar_low_risk");
+  const vol=m.totalVolume>0?t("nar_vol",fmt(m.totalVolume),fmt(m.totalSent),fmt(m.totalReceived)):t("nar_no_vol");
+  const div=m.tokenCount>0||m.nftCount>0?t("nar_diversity",m.tokenCount,m.nftCount):t("nar_no_div");
+  return `${t("nar_profile")} ${profile}. ${t("nar_active")} ${m.firstDate} (${Math.round(m.agedays)} ${t("nar_days")} ${m.lastDate}). ${m.txCount} ${t("nar_txs")} ${m.uniqueCount} ${t("nar_peers")} ${vol} ${div} ${t("nar_gas",(fmt(m.gasTotal,4)))} ${t("nar_risk")} ${rl} (${t("nar_risk_score")} ${riskResult.riskScore}/100). ${t("nar_trust")} ${trustScore}/100.`;
+}
+
+/** Orchestrates all agents */
+async function runAnalysis(addr, txList, tokenTx, nftTx, balance, isContract, t) {
+  const m = computeMetrics(addr,txList,tokenTx,nftTx,balance,isContract);
+  const {profile,flags} = ProfilerAgent(m,t);
+  const behaviors = BehaviorAgent(m,t);
+  const riskResult = RiskAgent(m,t);
+  const trustScore = ScoreEngine(m,flags,riskResult.riskScore);
+  const narrative  = NarrativeGen(m,profile,riskResult,trustScore,t);
+  return {m,profile,flags,behaviors,riskResult,trustScore,narrative};
+}
+
+/* ─────────────────────────────────────────────────────────────────────
    GRAPH BUILDER
-═══════════════════════════════════════════════════════════════════════════ */
+───────────────────────────────────────────────────────────────────── */
 function buildGraph(center, txList) {
-  const ca = center.toLowerCase();
-  const nodes = new Map();
-  const links = new Map();
-
-  const node = (addr) => {
-    const a = addr.toLowerCase();
-    if (!nodes.has(a)) nodes.set(a, { id:a, txCount:0, volume:0, sent:0, received:0,
-      label:getLabel(a), isMixer:MIXERS.has(a), isBlacklisted:BLACKLIST.has(a) });
+  const ca=center.toLowerCase();
+  const nodes=new Map(), links=new Map();
+  const MIXERS=new Set(["0x722122df12d4e14e13ac3b6895a86e84145b6967","0xdd4c48c0b24039969fc16d1cdf626eab821d3384"]);
+  const node=(addr)=>{
+    const a=addr.toLowerCase();
+    if(!nodes.has(a)) nodes.set(a,{id:a,txCount:0,volume:0,sent:0,received:0,label:getLabel(a),isMixer:MIXERS.has(a)});
     return nodes.get(a);
   };
-
   node(ca);
-
-  for (const tx of txList) {
-    const from = tx.from?.toLowerCase();
-    const to   = tx.to?.toLowerCase();
-    if (!from || !to) continue;
-    const val = weiToEth(tx.value || 0);
-
-    node(from); node(to);
-    const other = from === ca ? to : from;
-    const n = nodes.get(other);
-    n.txCount++;
-    n.volume += val;
-    if (from === ca) n.sent += val; else n.received += val;
-
-    const key = [from, to].sort().join("|");
-    if (!links.has(key)) links.set(key, { source:from, target:to, count:0, volume:0 });
-    links.get(key).count++;
-    links.get(key).volume += val;
+  for(const tx of txList){
+    const from=tx.from?.toLowerCase(),to=tx.to?.toLowerCase();
+    if(!from||!to)continue;
+    const val=weiToEth(tx.value||0);
+    node(from);node(to);
+    const other=from===ca?to:from;
+    const n=nodes.get(other);
+    n.txCount++;n.volume+=val;
+    if(from===ca)n.sent+=val;else n.received+=val;
+    const key=[from,to].sort().join("|");
+    if(!links.has(key))links.set(key,{source:from,target:to,count:0,volume:0});
+    links.get(key).count++;links.get(key).volume+=val;
   }
-
-  const sorted = [...nodes.values()].filter(n => n.id !== ca).sort((a,b) => b.txCount - a.txCount);
-  const keep = new Set([ca, ...sorted.slice(0, 70).map(n => n.id)]);
-
-  return {
-    nodes: [...nodes.values()].filter(n => keep.has(n.id)),
-    links: [...links.values()].filter(l => {
-      const s = typeof l.source === "object" ? l.source.id : l.source;
-      const t = typeof l.target === "object" ? l.target.id : l.target;
-      return keep.has(s) && keep.has(t);
-    }),
+  const sorted=[...nodes.values()].filter(n=>n.id!==ca).sort((a,b)=>b.txCount-a.txCount);
+  const keep=new Set([ca,...sorted.slice(0,60).map(n=>n.id)]);
+  return{
+    nodes:[...nodes.values()].filter(n=>keep.has(n.id)),
+    links:[...links.values()].filter(l=>{
+      const s=typeof l.source==="object"?l.source.id:l.source;
+      const t=typeof l.target==="object"?l.target.id:l.target;
+      return keep.has(s)&&keep.has(t);
+    })
   };
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ██  AUTONOMOUS ANALYSIS ENGINE  ██
-   Each agent outputs findings grounded in real computed metrics.
-   No output is static — every string embeds actual values.
-═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── 1. Compute raw metrics from on-chain data ── */
-function computeMetrics(addr, txList, tokenTx, nftTx, balance, isContract) {
-  const ca = addr.toLowerCase();
-
-  // Timestamps
-  const timestamps = txList.map(t => Number(t.timeStamp)).filter(Boolean).sort((a,b) => a-b);
-  const firstTs    = timestamps[0]   ?? Math.floor(Date.now()/1000);
-  const lastTs     = timestamps[timestamps.length-1] ?? Math.floor(Date.now()/1000);
-  const agedays    = Math.max(1, (lastTs - firstTs) / 86400);
-  const daysSinceLast = (Date.now()/1000 - lastTs) / 86400;
-
-  // Volume
-  const outTx  = txList.filter(t => t.from?.toLowerCase() === ca);
-  const inTx   = txList.filter(t => t.to?.toLowerCase()   === ca);
-  const totalSent     = outTx.reduce((s,t) => s + weiToEth(t.value||0), 0);
-  const totalReceived = inTx.reduce((s,t)  => s + weiToEth(t.value||0), 0);
-  const totalVolume   = totalSent + totalReceived;
-
-  // Counterparties
-  const counterparts  = new Set(txList.flatMap(t => [t.from?.toLowerCase(), t.to?.toLowerCase()]).filter(a => a && a !== ca));
-  const uniqueCount   = counterparts.size;
-
-  // Gas
-  const gasTotal = txList.reduce((s,t) => s + (Number(t.gasUsed||0) * Number(t.gasPrice||0))/1e18, 0);
-  const avgGasPrice = txList.length ? txList.reduce((s,t) => s + Number(t.gasPrice||0), 0) / txList.length / 1e9 : 0;
-
-  // Tx values
-  const values       = txList.map(t => weiToEth(t.value||0)).filter(v => v > 0);
-  const avgTxValue   = values.length ? values.reduce((s,v) => s+v, 0)/values.length : 0;
-  const maxTxValue   = values.length ? Math.max(...values) : 0;
-  const medianTxValue = values.length ? [...values].sort((a,b)=>a-b)[Math.floor(values.length/2)] : 0;
-
-  // Errors
-  const errorCount   = txList.filter(t => t.isError === "1").length;
-  const errorRate    = txList.length ? errorCount / txList.length : 0;
-
-  // Hour distribution (UTC)
-  const hourDist = new Array(24).fill(0);
-  for (const tx of txList) hourDist[new Date(Number(tx.timeStamp)*1000).getUTCHours()]++;
-  const nightShare  = hourDist.slice(0,6).reduce((a,b)=>a+b,0) / Math.max(txList.length,1);
-  const peakHour    = hourDist.indexOf(Math.max(...hourDist));
-
-  // Inter-tx gap analysis (detect bursts)
-  const outTimestamps = outTx.map(t => Number(t.timeStamp)).sort((a,b)=>a-b);
-  const gaps = outTimestamps.slice(1).map((t,i) => t - outTimestamps[i]);
-  const minGap = gaps.length ? Math.min(...gaps) : Infinity;
-  const avgGap = gaps.length ? gaps.reduce((s,g)=>s+g,0)/gaps.length : Infinity;
-  const burstCount = gaps.filter(g => g < 60).length;
-
-  // Round-number ratio
-  const roundRatio = values.length
-    ? values.filter(v => v >= 0.01 && Math.abs(v - Math.round(v*10)/10) < 0.001).length / values.length
-    : 0;
-
-  // Token / NFT diversity
-  const tokenSymbols  = [...new Set(tokenTx.map(t => t.tokenSymbol).filter(Boolean))];
-  const nftCollections= [...new Set(nftTx.map(t => t.tokenName).filter(Boolean))];
-  const dexContracts  = new Set(["0x7a250d5630b4cf539739df2c5dacb4c659f2488d","0xe592427a0aece92de3edee1f18e0157c05861564","0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45","0x1111111254fb6c44bac0bed2854e76f90643097d","0xdef1c0ded9bec7f1a1670819833240f027b25eff","0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f"]);
-  const dexTxCount    = txList.filter(t => dexContracts.has(t.to?.toLowerCase())).length;
-
-  // Mixer interactions
-  const mixerTxCount  = txList.filter(t => MIXERS.has(t.to?.toLowerCase()) || MIXERS.has(t.from?.toLowerCase())).length;
-  const blacklistHits = txList.filter(t => BLACKLIST.has(t.to?.toLowerCase()) || BLACKLIST.has(t.from?.toLowerCase())).length;
-
-  // Dust attacks received
-  const dustReceived  = inTx.filter(t => { const v = weiToEth(t.value||0); return v > 0 && v < 0.0001; }).length;
-
-  // Frequency
-  const txPerDay = txList.length / agedays;
-
-  return {
-    // identity
-    address: ca, isContract, balance,
-    // time
-    firstTs, lastTs, agedays, daysSinceLast,
-    firstDate: new Date(firstTs*1000).toLocaleDateString("fr-FR"),
-    lastDate:  new Date(lastTs*1000).toLocaleDateString("fr-FR"),
-    // volume
-    txCount: txList.length, outCount: outTx.length, inCount: inTx.length,
-    totalSent, totalReceived, totalVolume,
-    avgTxValue, maxTxValue, medianTxValue,
-    // counterparties
-    uniqueCount,
-    // gas
-    gasTotal, avgGasPrice,
-    // quality
-    errorCount, errorRate,
-    // timing
-    hourDist, nightShare, peakHour, txPerDay,
-    // bursts
-    minGap, avgGap, burstCount,
-    // patterns
-    roundRatio,
-    // defi
-    tokenSymbols, tokenCount: tokenSymbols.length,
-    nftCollections, nftCount: nftCollections.length,
-    dexTxCount,
-    // risk signals
-    mixerTxCount, blacklistHits, dustReceived,
+/* ─────────────────────────────────────────────────────────────────────
+   D3 FORCE GRAPH COMPONENT
+───────────────────────────────────────────────────────────────────── */
+function ForceGraph({graphData, centerAddr, onNodeClick}) {
+  const svgRef=useRef(null), simRef=useRef(null);
+  const ca=centerAddr.toLowerCase();
+  const nColor=(d)=>{
+    if(d.id===ca)return T.cyan;
+    if(d.isMixer)return T.red;
+    if(d.label)return T.amber;
+    if(d.volume>10)return T.green;
+    return T.blue;
   };
-}
-
-/* ── 2. ProfilerAgent — real classification based on computed metrics ── */
-function ProfilerAgent(m) {
-  // Each flag is a boolean based on actual metric values
-  const flags = {};
-
-  flags.IS_CONTRACT    = m.isContract;
-  flags.IS_WHALE       = !m.isContract && (m.balance > 500 || m.totalVolume > 10000);
-  flags.IS_MINI_WHALE  = !m.isContract && !flags.IS_WHALE && (m.balance > 50 || m.totalVolume > 1000);
-  flags.IS_EXCHANGE_LIKE = !m.isContract && m.uniqueCount > 150 && m.txCount > 300;
-  flags.IS_DEFI_HEAVY  = !m.isContract && m.dexTxCount > 20 && m.tokenCount > 10;
-  flags.IS_NFT_TRADER  = !m.isContract && m.nftCount > 5;
-  flags.IS_HOT_WALLET  = !m.isContract && m.txPerDay > 8;
-  flags.IS_BOT_LIKE    = !m.isContract && (m.burstCount > 5 || (m.nightShare > 0.4 && m.txPerDay > 3));
-  flags.IS_HODLER      = !m.isContract && m.balance > 1 && m.txPerDay < 0.1 && m.outCount < 10;
-  flags.IS_DORMANT     = !m.isContract && m.daysSinceLast > 365;
-  flags.IS_FRESH       = !m.isContract && m.agedays < 30;
-  flags.IS_RETAIL      = !m.isContract && m.balance < 0.5 && m.txCount < 30;
-
-  // Primary profile — ordered by priority
-  let profile = "Standard User";
-  if (flags.IS_CONTRACT)     profile = "Smart Contract";
-  else if (flags.IS_BOT_LIKE && flags.IS_HOT_WALLET) profile = "Bot / Automatisé";
-  else if (flags.IS_WHALE)   profile = "Whale";
-  else if (flags.IS_EXCHANGE_LIKE) profile = "Exchange / Market Maker";
-  else if (flags.IS_DEFI_HEAVY && flags.IS_NFT_TRADER) profile = "DeFi & NFT Power User";
-  else if (flags.IS_DEFI_HEAVY) profile = "DeFi Power User";
-  else if (flags.IS_NFT_TRADER) profile = "NFT Trader";
-  else if (flags.IS_MINI_WHALE) profile = "Mid-size Holder";
-  else if (flags.IS_HODLER)  profile = "Long-term HODLer";
-  else if (flags.IS_HOT_WALLET) profile = "Active Trader";
-  else if (flags.IS_DORMANT) profile = "Wallet Dormant";
-  else if (flags.IS_FRESH)   profile = "Wallet Récent";
-  else if (flags.IS_RETAIL)  profile = "Utilisateur Retail";
-
-  return { profile, flags };
-}
-
-/* ── 3. BehaviorAgent — every insight references real measured values ── */
-function BehaviorAgent(m) {
-  const insights = [];
-
-  // Activity level
-  if (m.txPerDay > 20) {
-    insights.push({ icon:"⚡", cat:"Activité", text:`Activité extrêmement élevée : ${m.txPerDay.toFixed(1)} tx/jour en moyenne sur ${Math.round(m.agedays)} jours. Ce niveau suggère un bot ou un système automatisé.` });
-  } else if (m.txPerDay > 5) {
-    insights.push({ icon:"🔄", cat:"Activité", text:`Fréquence élevée : ${m.txPerDay.toFixed(1)} tx/jour — profil de trader actif ou d'arbitragiste.` });
-  } else if (m.txPerDay > 1) {
-    insights.push({ icon:"📊", cat:"Activité", text:`Fréquence modérée : ${m.txPerDay.toFixed(1)} tx/jour — usage régulier de l'écosystème Ethereum.` });
-  } else if (m.txPerDay < 0.05) {
-    insights.push({ icon:"😴", cat:"Activité", text:`Fréquence très basse : ${m.txPerDay.toFixed(3)} tx/jour — wallet peu actif ou utilisé ponctuellement.` });
-  } else {
-    insights.push({ icon:"📅", cat:"Activité", text:`Fréquence basse : ${m.txPerDay.toFixed(2)} tx/jour — usage occasionnel.` });
-  }
-
-  // Temporal pattern
-  const peakLabel = `${m.peakHour}h-${m.peakHour+1}h UTC`;
-  if (m.nightShare > 0.45) {
-    insights.push({ icon:"🌙", cat:"Timing", text:`${(m.nightShare*100).toFixed(0)}% des transactions ont lieu entre 0h et 6h UTC (pic à ${peakLabel}). Forte probabilité d'automatisation ou de timezone Asie-Pacifique.` });
-  } else if (m.nightShare > 0.25) {
-    insights.push({ icon:"🕐", cat:"Timing", text:`Activité nocturne notable : ${(m.nightShare*100).toFixed(0)}% des tx entre 0h-6h UTC. Pic d'activité à ${peakLabel}.` });
-  } else {
-    insights.push({ icon:"☀️", cat:"Timing", text:`Activité principalement diurne. Pic d'activité à ${peakLabel} UTC — profil timezone Europe/Amériques probable.` });
-  }
-
-  // Burst patterns
-  if (m.burstCount > 10) {
-    insights.push({ icon:"💥", cat:"Comportement", text:`${m.burstCount} rafales détectées (transactions espacées de <60s). Intervalle minimum mesuré : ${m.minGap}s. Signature typique d'un script automatisé ou bot MEV.` });
-  } else if (m.burstCount > 2) {
-    insights.push({ icon:"⚡", cat:"Comportement", text:`${m.burstCount} micro-rafales détectées (<60s entre tx). Peut indiquer des sessions DeFi intensives ou un bot partiel.` });
-  }
-
-  // Flow direction
-  const ratio = m.totalSent / Math.max(m.totalReceived, 0.0001);
-  if (ratio > 10) {
-    insights.push({ icon:"📤", cat:"Flux", text:`Émetteur net très fort : ${fmt(m.totalSent)} ETH envoyés vs ${fmt(m.totalReceived)} ETH reçus (ratio ${ratio.toFixed(1)}x). Rôle distributeur — potentiellement un hot wallet ou exchange.` });
-  } else if (ratio > 3) {
-    insights.push({ icon:"📤", cat:"Flux", text:`Émetteur dominant : ${fmt(m.totalSent)} ETH envoyés vs ${fmt(m.totalReceived)} ETH reçus.` });
-  } else if (ratio < 0.1) {
-    insights.push({ icon:"📥", cat:"Flux", text:`Accumulateur net : ${fmt(m.totalReceived)} ETH reçus vs ${fmt(m.totalSent)} ETH envoyés (ratio ${(1/ratio).toFixed(1)}x). Comportement d'accumulation ou wallet de réception.` });
-  } else if (ratio < 0.5) {
-    insights.push({ icon:"📥", cat:"Flux", text:`Récepteur dominant : flux entrant significativement supérieur au flux sortant (${fmt(m.totalReceived)} ETH in vs ${fmt(m.totalSent)} ETH out).` });
-  } else {
-    insights.push({ icon:"↔️", cat:"Flux", text:`Flux équilibré : ${fmt(m.totalSent)} ETH envoyés / ${fmt(m.totalReceived)} ETH reçus. Ratio in/out : ${ratio.toFixed(2)}.` });
-  }
-
-  // Transaction value profile
-  if (m.avgTxValue > 50) {
-    insights.push({ icon:"💰", cat:"Taille", text:`Transactions de très grande taille : moyenne ${fmt(m.avgTxValue)} ETH, médiane ${fmt(m.medianTxValue)} ETH, maximum ${fmt(m.maxTxValue)} ETH.` });
-  } else if (m.avgTxValue > 5) {
-    insights.push({ icon:"💎", cat:"Taille", text:`Transactions de taille significative : moyenne ${fmt(m.avgTxValue)} ETH/tx, max ${fmt(m.maxTxValue)} ETH.` });
-  } else if (m.avgTxValue < 0.005 && m.avgTxValue > 0) {
-    insights.push({ icon:"🪙", cat:"Taille", text:`Micro-transactions dominantes : moyenne ${fmt(m.avgTxValue,5)} ETH/tx. Souvent associé à des interactions de contrats DeFi ou des bots d'arbitrage.` });
-  } else if (m.avgTxValue > 0) {
-    insights.push({ icon:"📦", cat:"Taille", text:`Taille de transaction standard : moyenne ${fmt(m.avgTxValue)} ETH/tx, médiane ${fmt(m.medianTxValue)} ETH.` });
-  }
-
-  // Round number pattern
-  if (m.roundRatio > 0.5) {
-    insights.push({ icon:"🎯", cat:"Pattern", text:`${(m.roundRatio*100).toFixed(0)}% des transactions ont des montants arrondis (ex: 0.1, 0.5, 1.0 ETH). Peut indiquer des paiements OTC, des dépôts programmés ou du wash trading.` });
-  }
-
-  // Error rate
-  if (m.errorRate > 0.15) {
-    insights.push({ icon:"❌", cat:"Qualité", text:`Taux d'échec élevé : ${(m.errorRate*100).toFixed(1)}% des transactions ont échoué (${m.errorCount}/${m.txCount}). Peut indiquer des conditions de marché difficiles, des contrats mal gérés, ou des tentatives de front-running échouées.` });
-  } else if (m.errorRate === 0 && m.txCount > 50) {
-    insights.push({ icon:"🤖", cat:"Qualité", text:`Taux d'échec nul sur ${m.txCount} transactions. Précision atypique pour un humain — signature possible d'un bot avec simulation pre-tx.` });
-  } else if (m.txCount > 0) {
-    insights.push({ icon:"✅", cat:"Qualité", text:`Taux d'échec normal : ${(m.errorRate*100).toFixed(1)}% (${m.errorCount} erreur(s) sur ${m.txCount} tx).` });
-  }
-
-  // DeFi usage
-  if (m.dexTxCount > 50) {
-    insights.push({ icon:"🦄", cat:"DeFi", text:`Usage DeFi intensif : ${m.dexTxCount} interactions avec des DEX (Uniswap, 1inch, SushiSwap…) sur ${m.txCount} tx totales (${(m.dexTxCount/m.txCount*100).toFixed(0)}%).` });
-  } else if (m.dexTxCount > 10) {
-    insights.push({ icon:"🔁", cat:"DeFi", text:`Usage DeFi régulier : ${m.dexTxCount} interactions DEX détectées.` });
-  } else if (m.dexTxCount > 0) {
-    insights.push({ icon:"🌱", cat:"DeFi", text:`Usage DeFi occasionnel : ${m.dexTxCount} interactions DEX.` });
-  }
-
-  // Counterparty breadth
-  if (m.uniqueCount > 500) {
-    insights.push({ icon:"🌐", cat:"Réseau", text:`Réseau de contreparties très large : ${m.uniqueCount} adresses uniques. Profil service/exchange ou très actif en DeFi.` });
-  } else if (m.uniqueCount > 100) {
-    insights.push({ icon:"🕸️", cat:"Réseau", text:`Large réseau : ${m.uniqueCount} contreparties uniques sur la période analysée.` });
-  } else if (m.uniqueCount < 5 && m.txCount > 20) {
-    insights.push({ icon:"🔒", cat:"Réseau", text:`Réseau très restreint : seulement ${m.uniqueCount} contreparties uniques pour ${m.txCount} transactions. Pattern de cycling entre adresses contrôlées possible.` });
-  } else {
-    insights.push({ icon:"👥", cat:"Réseau", text:`${m.uniqueCount} contreparties uniques identifiées.` });
-  }
-
-  // Gas behavior
-  if (m.avgGasPrice > 100) {
-    insights.push({ icon:"⛽", cat:"Gas", text:`Gas price moyen très élevé : ${m.avgGasPrice.toFixed(0)} Gwei. Indique une priorité de confirmation élevée, typique des bots MEV ou arbitragistes.` });
-  } else if (m.avgGasPrice > 30) {
-    insights.push({ icon:"⛽", cat:"Gas", text:`Gas price modéré : ${m.avgGasPrice.toFixed(0)} Gwei en moyenne. Gas total consommé : ${fmt(m.gasTotal,4)} ETH.` });
-  } else if (m.avgGasPrice > 0) {
-    insights.push({ icon:"💚", cat:"Gas", text:`Gas price économe : ${m.avgGasPrice.toFixed(1)} Gwei en moyenne. Gas total : ${fmt(m.gasTotal,4)} ETH.` });
-  }
-
-  return insights;
-}
-
-/* ── 4. RiskAgent — each risk is quantified and specific ── */
-function RiskAgent(m) {
-  const risks = [];
-  let riskScore = 0;
-
-  // Mixer contact
-  if (m.mixerTxCount > 0) {
-    const severity = m.mixerTxCount > 5 ? "CRITICAL" : "HIGH";
-    risks.push({ level: severity, msg: `${m.mixerTxCount} transaction(s) avec Tornado Cash ou protocoles de mixing identifiés.` });
-    riskScore += m.mixerTxCount > 5 ? 45 : 30;
-  }
-
-  // Blacklist
-  if (m.blacklistHits > 0) {
-    risks.push({ level: "CRITICAL", msg: `Contact avec ${m.blacklistHits} adresse(s) blacklistée(s) (sanctions OFAC / scam connu).` });
-    riskScore += 40;
-  }
-
-  // Fresh wallet high volume
-  if (m.agedays < 14 && m.totalVolume > 10) {
-    risks.push({ level: "HIGH", msg: `Wallet créé il y a seulement ${Math.round(m.agedays)} jours mais volume déjà élevé : ${fmt(m.totalVolume)} ETH. Signal d'alerte fréquent dans les schémas de fraude.` });
-    riskScore += 25;
-  } else if (m.agedays < 30 && m.totalVolume > 50) {
-    risks.push({ level: "MEDIUM", msg: `Wallet jeune (${Math.round(m.agedays)} jours) avec volume important (${fmt(m.totalVolume)} ETH).` });
-    riskScore += 15;
-  }
-
-  // Cycling pattern
-  if (m.txCount > 30 && m.uniqueCount <= 3) {
-    risks.push({ level: "HIGH", msg: `Pattern de cycling détecté : ${m.txCount} transactions entre seulement ${m.uniqueCount} adresses. Schéma possible de wash trading ou self-dealing.` });
-    riskScore += 30;
-  } else if (m.txCount > 20 && m.uniqueCount <= 5) {
-    risks.push({ level: "MEDIUM", msg: `Peu de contreparties uniques (${m.uniqueCount}) pour ${m.txCount} transactions — cycling partiel possible.` });
-    riskScore += 15;
-  }
-
-  // Dust attacks
-  if (m.dustReceived >= 5) {
-    risks.push({ level: "MEDIUM", msg: `${m.dustReceived} dust transactions reçues (<0.0001 ETH). Ce wallet est ciblé par des attaques de tracking ou de poisoning.` });
-    riskScore += 12;
-  } else if (m.dustReceived > 0) {
-    risks.push({ level: "LOW", msg: `${m.dustReceived} dust transaction(s) reçue(s) — tentative de tracking possible.` });
-    riskScore += 5;
-  }
-
-  // Bot-like with zero errors
-  if (m.errorRate === 0 && m.txCount > 100 && m.burstCount > 10) {
-    risks.push({ level: "MEDIUM", msg: `Combinaison anormale : 0% d'erreur sur ${m.txCount} tx + ${m.burstCount} bursts détectés. Signature probable d'un bot avec simulation pre-transaction.` });
-    riskScore += 10;
-  }
-
-  // Very high gas — MEV suspicion
-  if (m.avgGasPrice > 200 && m.txPerDay > 10) {
-    risks.push({ level: "LOW", msg: `Gas price très élevé (${m.avgGasPrice.toFixed(0)} Gwei moy.) combiné à haute fréquence — possible activité MEV (frontrunning/sandwich).` });
-    riskScore += 8;
-  }
-
-  // Very high error rate
-  if (m.errorRate > 0.3 && m.txCount > 10) {
-    risks.push({ level: "LOW", msg: `Taux d'échec élevé : ${(m.errorRate*100).toFixed(0)}% des transactions ont échoué — interactions risquées avec des contrats non-audités possible.` });
-    riskScore += 6;
-  }
-
-  if (risks.length === 0) {
-    risks.push({ level: "SAFE", msg: "Aucun signal de risque majeur détecté sur la période analysée." });
-  }
-
-  return { risks, riskScore: Math.min(riskScore, 100) };
-}
-
-/* ── 5. ScoreEngine — weighted combination of all signals ── */
-function ScoreEngine(m, pFlags, riskScore) {
-  let score = 50;
-
-  // Age bonus
-  if (m.agedays > 1460) score += 18;
-  else if (m.agedays > 730)  score += 12;
-  else if (m.agedays > 180)  score += 6;
-  else if (m.agedays < 14)   score -= 18;
-  else if (m.agedays < 30)   score -= 10;
-
-  // Activity
-  if (m.txCount > 500) score += 10;
-  else if (m.txCount > 100) score += 6;
-  else if (m.txCount > 20)  score += 3;
-  else if (m.txCount < 3)   score -= 8;
-
-  // Ecosystem participation
-  if (m.tokenCount > 15) score += 8;
-  else if (m.tokenCount > 5) score += 4;
-  if (m.dexTxCount > 20) score += 6;
-  if (m.uniqueCount > 100) score += 8;
-  else if (m.uniqueCount > 20) score += 4;
-
-  // Balance
-  if (m.balance > 100) score += 10;
-  else if (m.balance > 10) score += 6;
-  else if (m.balance > 1)  score += 3;
-  else if (m.balance < 0.001) score -= 5;
-
-  // Profile-specific
-  if (pFlags.IS_DEFI_HEAVY) score += 6;
-  if (pFlags.IS_WHALE || pFlags.IS_MINI_WHALE) score += 5;
-  if (pFlags.IS_BOT_LIKE) score -= 8;
-  if (pFlags.IS_DORMANT)  score -= 6;
-  if (pFlags.IS_FRESH)    score -= 10;
-
-  // Risk deduction
-  score -= riskScore * 0.65;
-
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-/* ── 6. NarrativeGenerator — fully data-driven summary ── */
-function NarrativeGenerator(m, profile, riskResult, trustScore) {
-  const riskLabel  = riskResult.riskScore > 60 ? "élevé 🔴" : riskResult.riskScore > 30 ? "modéré 🟡" : "faible 🟢";
-  const activeStr  = m.agedays > 1 ? `depuis le ${m.firstDate} (${Math.round(m.agedays)} jours)` : "depuis très récemment";
-  const lastStr    = `dernière activité : ${ago(m.lastTs)}`;
-  const volStr     = m.totalVolume > 0 ? `Volume on-chain total : ${fmt(m.totalVolume)} ETH (${fmt(m.totalSent)} envoyés / ${fmt(m.totalReceived)} reçus).` : "Aucun volume ETH détecté (interactions contractuelles uniquement ou wallet vide).";
-  const diversStr  = m.tokenCount > 0 || m.nftCount > 0
-    ? `Le wallet a interagi avec ${m.tokenCount} token(s) ERC-20 et ${m.nftCount} collection(s) NFT distincte(s).`
-    : "Aucune interaction ERC-20 ni NFT détectée.";
-  const gasStr     = m.gasTotal > 0 ? `Gas total consommé : ${fmt(m.gasTotal, 4)} ETH.` : "";
-
-  return `Profil identifié : ${profile}. Ce wallet est actif ${activeStr} (${lastStr}). ` +
-    `Il totalise ${fmtK(m.txCount)} transaction(s) avec ${m.uniqueCount} contrepartie(s) unique(s). ` +
-    `${volStr} ${diversStr} ${gasStr} ` +
-    `Risque global : ${riskLabel} (score ${riskResult.riskScore}/100). Score de confiance : ${trustScore}/100.`;
-}
-
-/* ── Orchestrateur ── */
-async function runAnalysis(addr, txList, tokenTx, nftTx, balance, isContract, graphData) {
-  const m         = computeMetrics(addr, txList, tokenTx, nftTx, balance, isContract);
-  const { profile, flags } = ProfilerAgent(m);
-  const behaviors = BehaviorAgent(m);
-  const riskResult= RiskAgent(m);
-  const trustScore= ScoreEngine(m, flags, riskResult.riskScore);
-  const narrative = NarrativeGenerator(m, profile, riskResult, trustScore);
-  return { m, profile, flags, behaviors, riskResult, trustScore, narrative };
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   D3 FORCE GRAPH
-═══════════════════════════════════════════════════════════════════════════ */
-function nodeColor(d, ca) {
-  if (d.id === ca)        return "#00ffe0";
-  if (d.isMixer)          return "#ef4444";
-  if (d.isBlacklisted)    return "#f97316";
-  if (d.label?.startsWith("⚠")) return "#ef4444";
-  if (d.label)            return "#fbbf24";
-  if (d.volume > 50)      return "#fb923c";
-  if (d.txCount > 20)     return "#a78bfa";
-  return "#60a5fa";
-}
-const nodeR = (d, ca) => d.id === ca ? 22 : Math.max(6, Math.min(16, 5 + Math.log2(d.txCount + 2) * 3));
-
-function ForceGraph({ graphData, centerAddr, onNodeClick }) {
-  const svgRef = useRef(null);
-  const simRef = useRef(null);
-  const ca = centerAddr.toLowerCase();
-
-  useEffect(() => {
-    if (!graphData?.nodes?.length || !svgRef.current) return;
-    const el = svgRef.current;
-    const W = el.clientWidth || 860, H = el.clientHeight || 520;
+  const nR=(d)=>d.id===ca?22:Math.max(6,Math.min(16,5+Math.log2(d.txCount+2)*3));
+  useEffect(()=>{
+    if(!graphData?.nodes?.length||!svgRef.current)return;
+    const el=svgRef.current,W=el.clientWidth||860,H=el.clientHeight||520;
     d3.select(el).selectAll("*").remove();
-
-    const svg = d3.select(el).attr("viewBox", `0 0 ${W} ${H}`)
-      .call(d3.zoom().scaleExtent([0.15, 6]).on("zoom", e => g.attr("transform", e.transform)));
-
-    const defs = svg.append("defs");
-    const flt = defs.append("filter").attr("id","glow");
-    flt.append("feGaussianBlur").attr("stdDeviation","3.5").attr("result","blur");
-    const fm = flt.append("feMerge");
+    const svg=d3.select(el).attr("viewBox",`0 0 ${W} ${H}`)
+      .call(d3.zoom().scaleExtent([0.15,6]).on("zoom",e=>g.attr("transform",e.transform)));
+    const defs=svg.append("defs");
+    const flt=defs.append("filter").attr("id","cl-glow");
+    flt.append("feGaussianBlur").attr("stdDeviation","4").attr("result","blur");
+    const fm=flt.append("feMerge");
     fm.append("feMergeNode").attr("in","blur");
     fm.append("feMergeNode").attr("in","SourceGraphic");
-
-    const g = svg.append("g");
-
-    const link = g.append("g").selectAll("line").data(graphData.links).join("line")
-      .attr("stroke","#162840").attr("stroke-opacity",0.8)
-      .attr("stroke-width", d => Math.max(0.5, Math.log(d.count+1)*1.6));
-
-    const node = g.append("g").selectAll("g").data(graphData.nodes).join("g")
+    const g=svg.append("g");
+    const link=g.append("g").selectAll("line").data(graphData.links).join("line")
+      .attr("stroke","#0f2040").attr("stroke-opacity",0.9)
+      .attr("stroke-width",d=>Math.max(0.5,Math.log(d.count+1)*1.4));
+    const node=g.append("g").selectAll("g").data(graphData.nodes).join("g")
       .attr("cursor","pointer").on("click",(_,d)=>onNodeClick(d))
       .call(d3.drag()
         .on("start",(e,d)=>{if(!e.active)simRef.current.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y;})
         .on("drag",(e,d)=>{d.fx=e.x;d.fy=e.y;})
         .on("end",(e,d)=>{if(!e.active)simRef.current.alphaTarget(0);d.fx=null;d.fy=null;}));
-
-    // center halo
-    node.filter(d=>d.id===ca).append("circle")
-      .attr("r",34).attr("fill","none").attr("stroke","#00ffe0").attr("stroke-opacity",0.18).attr("stroke-width",1.5)
-      .style("animation","halo 2.5s ease-in-out infinite");
-
+    node.filter(d=>d.id===ca).append("circle").attr("r",36).attr("fill","none")
+      .attr("stroke",T.cyan).attr("stroke-opacity",0.15).attr("stroke-width",1);
     node.append("circle")
-      .attr("r", d=>nodeR(d,ca))
-      .attr("fill", d=>`${nodeColor(d,ca)}20`)
-      .attr("stroke", d=>nodeColor(d,ca))
-      .attr("stroke-width", d=>d.id===ca?2.5:1.5)
-      .attr("filter","url(#glow)");
-
+      .attr("r",d=>nR(d)).attr("fill",d=>nColor(d)+"18")
+      .attr("stroke",d=>nColor(d)).attr("stroke-width",d=>d.id===ca?2.5:1.2)
+      .attr("filter","url(#cl-glow)");
     node.append("text").attr("text-anchor","middle").attr("dy","0.35em")
-      .attr("fill","#94a3b8").attr("font-size",d=>d.id===ca?"9.5px":"7px")
-      .attr("font-family","'Space Mono',monospace").attr("pointer-events","none")
-      .text(d => d.label || shortAddr(d.id));
-
-    simRef.current = d3.forceSimulation(graphData.nodes)
-      .force("link", d3.forceLink(graphData.links).id(d=>d.id).distance(85).strength(0.35))
-      .force("charge", d3.forceManyBody().strength(-240))
-      .force("center", d3.forceCenter(W/2, H/2))
-      .force("collision", d3.forceCollide(d=>nodeR(d,ca)+9))
+      .attr("fill","#6080a0").attr("font-size",d=>d.id===ca?"9px":"7px")
+      .attr("font-family","'IBM Plex Mono',monospace").attr("pointer-events","none")
+      .text(d=>d.label||shortAddr(d.id));
+    simRef.current=d3.forceSimulation(graphData.nodes)
+      .force("link",d3.forceLink(graphData.links).id(d=>d.id).distance(85).strength(0.35))
+      .force("charge",d3.forceManyBody().strength(-240))
+      .force("center",d3.forceCenter(W/2,H/2))
+      .force("collision",d3.forceCollide(d=>nR(d)+9))
       .on("tick",()=>{
         link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y)
             .attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
         node.attr("transform",d=>`translate(${d.x||0},${d.y||0})`);
       });
-
-    return ()=>simRef.current?.stop();
-  }, [graphData, ca]);
-
-  return (
-    <svg ref={svgRef} style={{width:"100%",height:"100%"}}>
-      <style>{`@keyframes halo{0%,100%{r:34;opacity:0.18}50%{r:42;opacity:0.07}}`}</style>
-    </svg>
-  );
+    return()=>simRef.current?.stop();
+  },[graphData,ca]);
+  return <svg ref={svgRef} style={{width:"100%",height:"100%"}}/>;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
+/* ─────────────────────────────────────────────────────────────────────
    UI PRIMITIVES
-═══════════════════════════════════════════════════════════════════════════ */
-const RC = { CRITICAL:"#ef4444", HIGH:"#f97316", MEDIUM:"#eab308", LOW:"#84cc16", SAFE:"#22c55e" };
-const RB = { CRITICAL:"#ef444412", HIGH:"#f9731612", MEDIUM:"#eab30812", LOW:"#84cc1612", SAFE:"#22c55e12" };
+───────────────────────────────────────────────────────────────────── */
+const RC={CRITICAL:T.red,HIGH:"#f97316",MEDIUM:T.amber,LOW:T.green,SAFE:T.green};
 
-const Pill = ({ text, color="#00ffe0" }) => (
-  <span style={{ display:"inline-block", padding:"2px 9px", borderRadius:99,
-    border:`1px solid ${color}50`, background:`${color}14`,
-    color, fontSize:10, fontFamily:"'Space Mono',monospace", whiteSpace:"nowrap" }}>
-    {text}
-  </span>
+const Tag=({text,color=T.cyan,size=10})=>(
+  <span className="mono" style={{display:"inline-block",padding:"2px 8px",borderRadius:3,
+    border:`1px solid ${color}40`,background:`${color}10`,color,fontSize:size,
+    letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{text}</span>
 );
 
-const StatCard = ({ label, value, sub, accent="#00ffe0" }) => (
-  <div style={{ background:"rgba(5,11,22,0.9)", border:`1px solid ${accent}18`, borderRadius:10, padding:"12px 15px" }}>
-    <div style={{ color:"#2a4060", fontSize:9, textTransform:"uppercase", letterSpacing:"0.14em", marginBottom:5 }}>{label}</div>
-    <div style={{ color:accent, fontSize:18, fontWeight:700, fontFamily:"'Space Mono',monospace", lineHeight:1 }}>{value}</div>
-    {sub && <div style={{ color:"#1e3a5f", fontSize:10, marginTop:4 }}>{sub}</div>}
+const Metric=({label,value,sub,accent=T.cyan})=>(
+  <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:8,
+    padding:"14px 16px",borderTop:`2px solid ${accent}`}}>
+    <div className="mono" style={{color:T.muted,fontSize:9,textTransform:"uppercase",
+      letterSpacing:"0.16em",marginBottom:6}}>{label}</div>
+    <div className="display" style={{color:accent,fontSize:26,lineHeight:1}}>{value}</div>
+    {sub&&<div className="mono" style={{color:T.dim,fontSize:9,marginTop:5}}>{sub}</div>}
   </div>
 );
 
-const ScoreRing = ({ score }) => {
-  const r=42, c=2*Math.PI*r, col=score>70?"#22c55e":score>40?"#eab308":"#ef4444";
-  return (
-    <div style={{ position:"relative", width:116, height:116 }}>
-      <svg width={116} height={116} viewBox="0 0 116 116">
-        <circle cx={58} cy={58} r={r} fill="none" stroke="#0c1e38" strokeWidth={9}/>
-        <circle cx={58} cy={58} r={r} fill="none" stroke={col} strokeWidth={9}
+const ScoreRing=({score})=>{
+  const r=40,c=2*Math.PI*r,col=score>70?T.green:score>40?T.amber:T.red;
+  return(
+    <div style={{position:"relative",width:100,height:100}}>
+      <svg width={100} height={100} viewBox="0 0 100 100">
+        <circle cx={50} cy={50} r={r} fill="none" stroke={T.bg2} strokeWidth={8}/>
+        <circle cx={50} cy={50} r={r} fill="none" stroke={col} strokeWidth={8}
           strokeDasharray={`${c*score/100} ${c}`} strokeLinecap="round"
-          transform="rotate(-90 58 58)"/>
+          transform="rotate(-90 50 50)" style={{transition:"stroke-dasharray 1s ease"}}/>
       </svg>
-      <div style={{ position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center" }}>
-        <span style={{ color:col,fontSize:28,fontWeight:700,fontFamily:"'Space Mono',monospace" }}>{score}</span>
-        <span style={{ color:"#2a4060",fontSize:9 }}>/ 100</span>
+      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+        alignItems:"center",justifyContent:"center"}}>
+        <span className="display" style={{color:col,fontSize:28,lineHeight:1}}>{score}</span>
+        <span className="mono" style={{color:T.muted,fontSize:8}}>/ 100</span>
       </div>
     </div>
   );
 };
 
-const NodePanel = ({ node, onClose }) => {
-  if (!node) return null;
-  return (
-    <div style={{ position:"absolute",top:10,right:10,width:255,background:"rgba(3,8,18,0.98)",
-      border:"1px solid #00ffe025",borderRadius:12,padding:16,backdropFilter:"blur(20px)",zIndex:20 }}>
-      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12 }}>
-        <span style={{ color:"#00ffe0",fontSize:9,letterSpacing:"0.14em",fontFamily:"'Space Mono',monospace" }}>NODE</span>
-        <button onClick={onClose} style={{ background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:18,lineHeight:1 }}>×</button>
+const NodePanel=({node,onClose,t})=>{
+  if(!node)return null;
+  return(
+    <div style={{position:"absolute",top:10,right:10,width:250,
+      background:"rgba(5,8,16,0.98)",border:`1px solid ${T.cyan}20`,
+      borderRadius:10,padding:14,backdropFilter:"blur(20px)",zIndex:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <span className="mono" style={{color:T.cyan,fontSize:9,letterSpacing:"0.14em"}}>{t("node_title")}</span>
+        <button onClick={onClose} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
       </div>
-      {node.label && <div style={{ color:"#fbbf24",fontSize:13,fontWeight:600,marginBottom:6 }}>{node.label}</div>}
-      {(node.isMixer||node.isBlacklisted) && (
-        <div style={{ background:"#ef444412",border:"1px solid #ef444435",borderRadius:6,padding:"6px 10px",color:"#ef4444",fontSize:11,marginBottom:8 }}>
-          {node.isMixer?"🌀 Protocole de mixing":"⛔ Adresse blacklistée"}
-        </div>
-      )}
-      <div style={{ color:"#1e3a5f",fontSize:10,fontFamily:"'Space Mono',monospace",wordBreak:"break-all",marginBottom:12 }}>{node.id}</div>
-      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8 }}>
-        {[["Tx","txCount","#60a5fa"],["Volume",`${fmt(node.volume)} ETH`,"#e2e8f0"],["Envoyé",`${fmt(node.sent)} ETH`,"#fb923c"],["Reçu",`${fmt(node.received)} ETH`,"#34d399"]].map(([l,v,c])=>(
-          <div key={l}><div style={{ color:"#2a4060",fontSize:9 }}>{l}</div>
-          <div style={{ color:c,fontFamily:"'Space Mono',monospace",fontSize:12 }}>{typeof v==="string"?v:node[v]}</div></div>
+      {node.label&&<div style={{color:T.amber,fontSize:13,fontWeight:600,marginBottom:6}}>{node.label}</div>}
+      {node.isMixer&&<div style={{background:T.red+"15",border:`1px solid ${T.red}30`,borderRadius:5,padding:"5px 8px",color:T.red,fontSize:10,marginBottom:8}}>{t("node_mixer")}</div>}
+      <div className="mono" style={{color:T.dim,fontSize:9,wordBreak:"break-all",marginBottom:10}}>{node.id}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {[[t("node_tx"),node.txCount,T.blue],[t("node_vol"),`${fmt(node.volume,2)} ETH`,T.text],[t("node_out"),`${fmt(node.sent,2)}`,T.red],[t("node_in"),`${fmt(node.received,2)}`,T.green]].map(([l,v,c])=>(
+          <div key={l}><div className="mono" style={{color:T.muted,fontSize:9}}>{l}</div>
+          <div className="mono" style={{color:c,fontSize:12}}>{v}</div></div>
         ))}
       </div>
       <a href={`https://etherscan.io/address/${node.id}`} target="_blank" rel="noreferrer"
-        style={{ display:"block",marginTop:14,textAlign:"center",color:"#3b6eaa",fontSize:11,textDecoration:"none",border:"1px solid #1e3a5f",borderRadius:7,padding:"7px 0" }}>
-        Etherscan ↗
+        style={{display:"block",marginTop:12,textAlign:"center",color:T.blue,fontSize:10,
+        textDecoration:"none",border:`1px solid ${T.border2}`,borderRadius:5,padding:"6px 0",fontFamily:"'IBM Plex Mono',monospace"}}>
+        {t("node_etherscan")}
       </a>
     </div>
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   MAIN APP
-═══════════════════════════════════════════════════════════════════════════ */
-const TABS = ["Graphe","Métriques","Analyse IA","Tokens / NFT"];
+/* ─────────────────────────────────────────────────────────────────────
+   PAGE: ANALYZE
+───────────────────────────────────────────────────────────────────── */
+function PageAnalyze({ethPrice,devKey,setDevKey,t}) {
+  const [addr,setAddr]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [step,setStep]=useState("");
+  const [error,setError]=useState("");
+  const [result,setResult]=useState(null);
+  const [graph,setGraph]=useState(null);
+  const [tab,setTab]=useState("graph");
+  const [selNode,setSelNode]=useState(null);
 
-export default function App() {
-  const [addr,      setAddr]      = useState("");
-  const [apiKey,    setApiKey]    = useState(""); // utilisé uniquement en dev local
-  const [loading,   setLoading]   = useState(false);
-  const [step,      setStep]      = useState("");
-  const [error,     setError]     = useState("");
-  const [result,    setResult]    = useState(null);
-  const [graph,     setGraph]     = useState(null);
-  const [ethPrice,  setEthPrice]  = useState(0);
-  const [tab,       setTab]       = useState("Graphe");
-  const [selNode,   setSelNode]   = useState(null);
-  const [showKey,   setShowKey]   = useState(false);
-
-  const analyze = useCallback(async () => {
-    const address = addr.trim();
-    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) { setError("Adresse Ethereum invalide."); return; }
-    // En dev local, la clé du champ est utilisée directement
-    _devKey = apiKey.trim();
-    setError(""); setLoading(true); setResult(null); setGraph(null); setSelNode(null);
-    try {
-      setStep("Solde & prix ETH…");
-      const [balance, price] = await Promise.all([fetchBalance(address), fetchEthPrice()]);
-      setEthPrice(price);
-
-      setStep("Transactions (max 500)…");
-      const txList = await fetchTxList(address);
-
-      setStep("Tokens ERC-20…");
-      const tokenTx = await fetchTokenTx(address);
-
-      setStep("NFTs…");
-      const nftTx = await fetchNFTTx(address);
-
-      setStep("Type de compte…");
-      const isContract = await fetchIsContract(address);
-
-      setStep("Graphe de relations…");
-      const g = buildGraph(address, txList);
+  const analyze=useCallback(async()=>{
+    const address=addr.trim();
+    if(!/^0x[0-9a-fA-F]{40}$/.test(address)){setError(t("analyze_err_invalid"));return;}
+    _devKey=devKey.trim();
+    setError("");setLoading(true);setResult(null);setGraph(null);setSelNode(null);
+    try{
+      setStep(t("analyze_step_balance"));
+      const balance=await fetchBalance(address);
+      setStep(t("analyze_step_tx"));
+      const txList=await fetchTxList(address);
+      setStep(t("analyze_step_tokens"));
+      const tokenTx=await fetchTokenTx(address);
+      setStep(t("analyze_step_nft"));
+      const nftTx=await fetchNFTTx(address);
+      setStep(t("analyze_step_type"));
+      const isContract=await fetchIsContract(address);
+      setStep(t("analyze_step_graph"));
+      const g=buildGraph(address,txList);
       setGraph(g);
-
-      // Debug log — visible dans la console du navigateur (F12)
-      console.info("[ChainLens] Données reçues:", {
-        balance: balance.toFixed(4) + " ETH",
-        txCount: txList.length,
-        tokenTx: tokenTx.length,
-        nftTx: nftTx.length,
-        isContract,
-        graphNodes: g.nodes.length,
-      });
-
-      console.info("[ChainLens] Données reçues:", {
-        balance, txCount: txList.length, tokenTx: tokenTx.length, nftTx: nftTx.length, isContract
-      });
-
-      if (txList.length === 0 && balance === 0 && tokenTx.length === 0) {
-        setError("⚠ Aucune donnée reçue. Causes possibles : (1) La variable ETHERSCAN_KEY n'est pas définie dans Netlify > Environment variables — vérifiez le nom exact. (2) Wallet réellement vide. Ouvrez F12 > Console pour voir les logs détaillés.");
-        setLoading(false); setStep(""); return;
+      console.info("[ChainLens] Data received:",{balance,txCount:txList.length,tokenTx:tokenTx.length,nftTx:nftTx.length,isContract});
+      if(txList.length===0&&balance===0&&tokenTx.length===0){
+        setError(t("analyze_err_nodata"));setLoading(false);setStep("");return;
       }
+      setStep(t("analyze_step_agents"));
+      const r=await runAnalysis(address,txList,tokenTx,nftTx,balance,isContract,t);
+      setResult(r);setTab("graph");
+    }catch(e){console.error("[ChainLens]",e);setError("Error: "+e.message);}
+    finally{setLoading(false);setStep("");}
+  },[addr,devKey,t]);
 
-      setStep("Analyse des agents…");
-      const r = await runAnalysis(address, txList, tokenTx, nftTx, balance, isContract, g);
-      setResult(r);
-      setTab("Graphe");
-    } catch(e) {
-      console.error("[ChainLens] Erreur analyze:", e);
-      setError("Erreur : " + e.message);
-    } finally { setLoading(false); setStep(""); }
-  }, [addr, apiKey]);
+  const m=result?.m;
+  const usd=m&&ethPrice?`$${(m.balance*ethPrice).toLocaleString("en-US",{maximumFractionDigits:0})}`:null;
+  const TABS=[["graph",t("tab_graph")],["metrics",t("tab_metrics")],["analysis",t("tab_analysis")],["tokens",t("tab_tokens")]];
 
-  const m = result?.m;
-  const usd = m && ethPrice ? `≈ $${(m.balance * ethPrice).toLocaleString("fr-FR", {maximumFractionDigits:0})}` : null;
-
-  return (
-    <div style={{ minHeight:"100vh", background:"#030912", color:"#e2e8f0", fontFamily:"'Syne',sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');
-        *{box-sizing:border-box;margin:0;padding:0}
-        ::-webkit-scrollbar{width:4px;background:#030912}
-        ::-webkit-scrollbar-thumb{background:#1a3050;border-radius:2px}
-        input,button,a{font-family:inherit}input{outline:none}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes appear{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-      `}</style>
-
-      {/* bg grid */}
-      <div style={{ position:"fixed",inset:0,backgroundImage:"linear-gradient(#08203a 1px,transparent 1px),linear-gradient(90deg,#08203a 1px,transparent 1px)",backgroundSize:"60px 60px",opacity:0.22,pointerEvents:"none" }}/>
-
-      {/* Header */}
-      <header style={{ position:"sticky",top:0,zIndex:50,background:"rgba(3,9,18,0.97)",backdropFilter:"blur(16px)",borderBottom:"1px solid #0c2040",padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between" }}>
-        <div style={{ display:"flex",alignItems:"center",gap:12 }}>
-          <div style={{ width:36,height:36,borderRadius:8,background:"linear-gradient(135deg,#00ffe0,#0055ff)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,color:"#030912",fontFamily:"'Space Mono',monospace" }}>⬡</div>
-          <div>
-            <div style={{ fontWeight:800,fontSize:18,letterSpacing:"-0.02em" }}>CHAIN<span style={{ color:"#00ffe0" }}>LENS</span></div>
-            <div style={{ color:"#0c2040",fontSize:9,letterSpacing:"0.2em",marginTop:1 }}>ON-CHAIN INTELLIGENCE · AUTONOMOUS ENGINE</div>
-          </div>
+  return(
+    <div style={{padding:"24px",maxWidth:1400,margin:"0 auto"}}>
+      <div style={{display:"flex",gap:10,marginBottom:16}}>
+        <div style={{flex:1,position:"relative"}}>
+          <span className="mono" style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:T.dim,fontSize:12,pointerEvents:"none"}}>0x</span>
+          <input value={addr} onChange={e=>setAddr(e.target.value)} onKeyDown={e=>e.key==="Enter"&&analyze()}
+            placeholder={t("analyze_placeholder")}
+            style={{width:"100%",background:T.bg1,border:`1px solid ${T.border2}`,borderRadius:8,
+              padding:"13px 14px 13px 38px",color:T.text,fontSize:13,fontFamily:"'IBM Plex Mono',monospace"}}/>
         </div>
-        <button onClick={()=>setShowKey(v=>!v)} style={{ background:"transparent",border:"1px solid #1a3050",borderRadius:8,color:"#2a4060",padding:"6px 14px",cursor:"pointer",fontSize:11,letterSpacing:"0.05em" }}>
-          ⚙ API KEY
+        <button onClick={analyze} disabled={loading}
+          style={{padding:"13px 28px",background:loading?T.bg2:`linear-gradient(135deg,${T.cyan},#0066ff)`,
+            border:"none",borderRadius:8,color:loading?T.muted:T.bg,fontWeight:700,cursor:loading?"not-allowed":"pointer",
+            fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:"0.1em",whiteSpace:"nowrap"}}>
+          {loading?t("analyze_scanning"):t("analyze_btn")}
         </button>
-      </header>
+      </div>
 
-      {showKey && (
-        <div style={{ background:"#05101f",borderBottom:"1px solid #0c2040",padding:"12px 24px",display:"flex",gap:12,alignItems:"center" }}>
-          <span style={{ color:"#2a4060",fontSize:10,whiteSpace:"nowrap" }}>
-            {typeof window !== "undefined" && window.location.hostname === "localhost" ? "Clé Etherscan (dev local)" : "Clé gérée côté serveur (Netlify)"}
-          </span>
-          {typeof window !== "undefined" && window.location.hostname === "localhost"
-            ? <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)}
-                style={{ flex:1,background:"#030912",border:"1px solid #1a3050",borderRadius:7,padding:"7px 12px",color:"#00ffe0",fontSize:11,fontFamily:"'Space Mono',monospace" }}
-                placeholder="Clé Etherscan pour dev local…"/>
-            : <span style={{ color:"#22c55e",fontSize:11,fontFamily:"'Space Mono',monospace" }}>✓ ETHERSCAN_KEY injectée via variable d'environnement Netlify</span>
-          }
-          <a href="https://etherscan.io/apis" target="_blank" rel="noreferrer" style={{ color:"#1a3050",fontSize:10,textDecoration:"none",whiteSpace:"nowrap" }}>Clé gratuite ↗</a>
+      {IS_DEV&&(
+        <div style={{display:"flex",gap:10,marginBottom:12,alignItems:"center"}}>
+          <span className="mono" style={{color:T.muted,fontSize:10,whiteSpace:"nowrap"}}>{t("dev_key_label")}</span>
+          <input type="password" value={devKey} onChange={e=>setDevKey(e.target.value)} className="mono"
+            style={{flex:1,background:T.bg1,border:`1px solid ${T.border}`,borderRadius:6,
+              padding:"6px 10px",color:T.cyan,fontSize:10}} placeholder={t("dev_key_hint")}/>
         </div>
       )}
 
-      {/* Search */}
-      <div style={{ padding:"24px 24px 14px",maxWidth:960,margin:"0 auto" }}>
-        <div style={{ display:"flex",gap:10 }}>
-          <div style={{ flex:1,position:"relative" }}>
-            <span style={{ position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"#1a3050",pointerEvents:"none" }}>⬡</span>
-            <input value={addr} onChange={e=>setAddr(e.target.value)} onKeyDown={e=>e.key==="Enter"&&analyze()}
-              placeholder="Adresse Ethereum — 0x…"
-              style={{ width:"100%",background:"rgba(5,11,22,0.95)",border:"1px solid #1a3050",borderRadius:10,padding:"13px 14px 13px 40px",color:"#e2e8f0",fontSize:14,fontFamily:"'Space Mono',monospace",letterSpacing:"0.02em" }}/>
-          </div>
-          <button onClick={analyze} disabled={loading}
-            style={{ padding:"13px 28px",background:loading?"#0c2040":"linear-gradient(135deg,#00ffe0,#0066ff)",border:"none",borderRadius:10,color:loading?"#2a4060":"#030912",fontWeight:800,fontSize:13,cursor:loading?"not-allowed":"pointer",letterSpacing:"0.05em",whiteSpace:"nowrap",transition:"all 0.2s" }}>
-            {loading?"ANALYSE…":"ANALYSER →"}
-          </button>
+      {loading&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div className="spin" style={{width:12,height:12,border:`2px solid ${T.cyan}`,borderTopColor:"transparent",borderRadius:"50%",flexShrink:0}}/>
+          <span className="mono" style={{color:T.muted,fontSize:11}}>{step}</span>
         </div>
-        {loading && (
-          <div style={{ marginTop:12,display:"flex",alignItems:"center",gap:10 }}>
-            <div style={{ width:13,height:13,border:"2px solid #00ffe0",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite",flexShrink:0 }}/>
-            <span style={{ color:"#2a4060",fontSize:11 }}>{step}</span>
-          </div>
-        )}
-        {error && <div style={{ marginTop:10,color:"#ef4444",fontSize:12,padding:"9px 14px",background:"#ef444410",border:"1px solid #ef444425",borderRadius:8 }}>{error}</div>}
-        {/* Indicateur statut proxy */}
-        {!loading && !result && (
-          <div style={{ marginTop:10,display:"flex",alignItems:"center",gap:8,fontSize:10,fontFamily:"'Space Mono',monospace" }}>
-            <div style={{ width:6,height:6,borderRadius:"50%",background:"#22c55e",flexShrink:0 }}/>
-            <span style={{ color:"#22c55e" }}>Proxy Netlify actif — clé sécurisée côté serveur</span>
-          </div>
-        )}
-      </div>
+      )}
+      {error&&<div className="mono" style={{marginBottom:12,color:T.red,fontSize:12,padding:"10px 14px",
+        background:T.red+"10",border:`1px solid ${T.red}25`,borderRadius:6}}>{error}</div>}
 
-      {/* Results */}
-      {result && graph && (
-        <div style={{ padding:"0 24px 48px",maxWidth:1440,margin:"0 auto",animation:"appear 0.35s ease" }}>
-
-          {/* Profile header */}
-          <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap" }}>
-            <code style={{ color:"#00ffe0",fontFamily:"'Space Mono',monospace",fontSize:12 }}>{addr}</code>
-            <Pill text={result.profile} color="#00ffe0"/>
-            {m.isContract && <Pill text="Smart Contract" color="#a78bfa"/>}
-            {result.flags.IS_BOT_LIKE && <Pill text="BOT PROBABLE" color="#f97316"/>}
-            {result.flags.IS_WHALE && <Pill text="WHALE" color="#fbbf24"/>}
-            {result.flags.IS_DEFI_HEAVY && <Pill text="DeFi Heavy" color="#34d399"/>}
-            {result.flags.IS_NFT_TRADER && <Pill text="NFT Trader" color="#e879f9"/>}
-            {result.riskResult.riskScore > 30 && <Pill text={`RISK ${result.riskResult.riskScore}/100`} color="#ef4444"/>}
+      {result&&graph&&(
+        <div className="fadeUp">
+          {/* Address header */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+            <code className="mono" style={{color:T.cyan,fontSize:11}}>{addr}</code>
+            <Tag text={result.profile} color={T.cyan}/>
+            {result.flags.IS_BOT_LIKE&&<Tag text="BOT" color={T.red}/>}
+            {result.flags.IS_WHALE&&<Tag text="WHALE" color={T.amber}/>}
+            {result.flags.IS_DEFI_HEAVY&&<Tag text="DeFi" color={T.green}/>}
+            {result.flags.IS_NFT_TRADER&&<Tag text="NFT" color={T.pink}/>}
+            {result.riskResult.riskScore>30&&<Tag text={`RISK ${result.riskResult.riskScore}`} color={T.red}/>}
             <a href={`https://etherscan.io/address/${addr}`} target="_blank" rel="noreferrer"
-              style={{ color:"#2a4060",fontSize:11,textDecoration:"none" }}>↗ Etherscan</a>
+              style={{color:T.muted,fontSize:10,textDecoration:"none",fontFamily:"'IBM Plex Mono',monospace"}}>↗ Etherscan</a>
           </div>
 
-          {/* Stats */}
-          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(145px,1fr))",gap:8,marginBottom:16 }}>
-            <StatCard label="Solde ETH"     value={fmt(m.balance,3)}         sub={usd}                         accent="#00ffe0"/>
-            <StatCard label="Transactions"  value={fmtK(m.txCount)}           sub={`~${m.txPerDay.toFixed(1)}/jour`} accent="#60a5fa"/>
-            <StatCard label="Contreparties" value={m.uniqueCount}             sub="adresses uniques"            accent="#a78bfa"/>
-            <StatCard label="Total envoyé"  value={`${fmt(m.totalSent,2)}`}   sub="ETH"                        accent="#fb923c"/>
-            <StatCard label="Total reçu"    value={`${fmt(m.totalReceived,2)}`} sub="ETH"                      accent="#34d399"/>
-            <StatCard label="Gas consommé"  value={fmt(m.gasTotal,4)}         sub={`~${m.avgGasPrice.toFixed(0)} Gwei moy.`} accent="#f59e0b"/>
-            <StatCard label="Tokens ERC-20" value={m.tokenCount}              sub="distincts"                   accent="#e879f9"/>
-            <StatCard label="NFT Coll."     value={m.nftCount}                sub="collections"                 accent="#38bdf8"/>
+          {/* Metrics */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:8,marginBottom:16}}>
+            <Metric label={t("metric_balance")}  value={fmt(m.balance,3)}               sub={usd}                                      accent={T.cyan}/>
+            <Metric label={t("metric_txcount")}  value={m.txCount>=1000?`${(m.txCount/1000).toFixed(1)}K`:m.txCount} sub={`~${m.txPerDay.toFixed(1)}${t("metric_day")}`} accent={T.blue}/>
+            <Metric label={t("metric_peers")}    value={m.uniqueCount}                  sub={t("metric_unique")}                       accent={T.purple}/>
+            <Metric label={t("metric_sent")}     value={fmt(m.totalSent,1)}             sub={t("metric_eth")}                          accent={T.red}/>
+            <Metric label={t("metric_received")} value={fmt(m.totalReceived,1)}         sub={t("metric_eth")}                          accent={T.green}/>
+            <Metric label={t("metric_gas")}      value={fmt(m.gasTotal,4)}              sub={`${m.avgGasPrice.toFixed(0)} ${t("metric_gwei")}`} accent={T.amber}/>
+            <Metric label={t("metric_erc20")}    value={m.tokenCount}                   sub={t("metric_tokens")}                       accent={T.pink}/>
+            <Metric label={t("metric_nft")}      value={m.nftCount}                     sub={t("metric_colls")}                        accent={T.blue}/>
           </div>
 
           {/* Tabs */}
-          <div style={{ display:"flex",borderBottom:"1px solid #0c2040",marginBottom:14 }}>
-            {TABS.map(t=>(
-              <button key={t} onClick={()=>setTab(t)}
-                style={{ padding:"9px 18px",background:"none",border:"none",borderBottom:tab===t?"2px solid #00ffe0":"2px solid transparent",color:tab===t?"#00ffe0":"#2a4060",cursor:"pointer",fontSize:11,fontFamily:"'Space Mono',monospace",letterSpacing:"0.08em" }}>
-                {t.toUpperCase()}
+          <div style={{display:"flex",borderBottom:`1px solid ${T.border}`,marginBottom:14}}>
+            {TABS.map(([id,label])=>(
+              <button key={id} onClick={()=>setTab(id)} className="mono"
+                style={{padding:"9px 18px",background:"none",border:"none",
+                  borderBottom:tab===id?`2px solid ${T.cyan}`:"2px solid transparent",
+                  color:tab===id?T.cyan:T.muted,cursor:"pointer",fontSize:10,letterSpacing:"0.1em"}}>
+                {label}
               </button>
             ))}
           </div>
 
-          {/* ─── TAB GRAPHE ─── */}
-          {tab==="Graphe" && (
-            <div style={{ position:"relative",background:"rgba(4,10,22,0.96)",border:"1px solid #0c2040",borderRadius:14,height:540,overflow:"hidden" }}>
+          {/* GRAPH tab */}
+          {tab==="graph"&&(
+            <div style={{position:"relative",background:T.bg1,border:`1px solid ${T.border}`,borderRadius:12,height:540,overflow:"hidden"}}>
               <ForceGraph graphData={graph} centerAddr={addr} onNodeClick={setSelNode}/>
-              <NodePanel node={selNode} onClose={()=>setSelNode(null)}/>
-              <div style={{ position:"absolute",bottom:12,left:14,display:"flex",gap:14,flexWrap:"wrap" }}>
-                {[["#00ffe0","Wallet analysé"],["#60a5fa","EOA"],["#a78bfa","Fréquent"],["#fbbf24","Entité connue"],["#fb923c","Haut volume"],["#ef4444","Mixer / Blacklist"]].map(([c,l])=>(
-                  <div key={l} style={{ display:"flex",alignItems:"center",gap:5,fontSize:9,color:"#2a4060" }}>
-                    <div style={{ width:7,height:7,borderRadius:"50%",background:c }}/>
-                    {l}
+              <NodePanel node={selNode} onClose={()=>setSelNode(null)} t={t}/>
+              <div style={{position:"absolute",bottom:12,left:14,display:"flex",gap:12,flexWrap:"wrap"}}>
+                {[[T.cyan,t("graph_wallet")],[T.blue,t("graph_eoa")],[T.amber,t("graph_known")],[T.green,t("graph_highvol")],[T.red,t("graph_mixer")]].map(([c,l])=>(
+                  <div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:9,color:T.muted}}>
+                    <div style={{width:6,height:6,borderRadius:"50%",background:c}}/>
+                    <span className="mono">{l}</span>
                   </div>
                 ))}
               </div>
-              <div style={{ position:"absolute",top:12,left:14,color:"#0c2040",fontSize:9,fontFamily:"'Space Mono',monospace" }}>
-                {graph.nodes.length} nœuds · {graph.links.length} liens · scroll=zoom · drag=déplacer · clic=détail
+              <div className="mono" style={{position:"absolute",top:12,left:14,color:T.dim,fontSize:9}}>
+                {graph.nodes.length} {t("graph_nodes")} · {graph.links.length} {t("graph_links")} · {t("graph_tip")}
               </div>
             </div>
           )}
 
-          {/* ─── TAB MÉTRIQUES ─── */}
-          {tab==="Métriques" && (
-            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14 }}>
-              {[
-                { title:"TOP CONTREPARTIES — VOLUME ETH",     nodes:[...graph.nodes].filter(n=>n.id!==addr.toLowerCase()).sort((a,b)=>b.volume-a.volume).slice(0,8),   vk:"volume",   vf:v=>`${fmt(v,2)} ETH`, ac:"#00ffe0" },
-                { title:"TOP CONTREPARTIES — FRÉQUENCE TX",   nodes:[...graph.nodes].filter(n=>n.id!==addr.toLowerCase()).sort((a,b)=>b.txCount-a.txCount).slice(0,8), vk:"txCount",  vf:v=>`${v} tx`,          ac:"#60a5fa" },
-              ].map(({title,nodes,vk,vf,ac})=>(
-                <div key={title} style={{ background:"rgba(4,10,22,0.96)",border:"1px solid #0c2040",borderRadius:12,padding:20 }}>
-                  <div style={{ color:"#2a4060",fontSize:9,letterSpacing:"0.14em",marginBottom:16 }}>{title}</div>
-                  {nodes.length===0 && <div style={{ color:"#1a3050",fontSize:12 }}>Aucune donnée</div>}
-                  {nodes.map((n,i)=>{
-                    const max=nodes.reduce((mx,x)=>Math.max(mx,x[vk]),0.001);
-                    return (
-                      <div key={n.id} style={{ display:"flex",alignItems:"center",gap:10,marginBottom:10 }}>
-                        <span style={{ color:"#1a3050",fontSize:9,fontFamily:"'Space Mono',monospace",width:14,flexShrink:0 }}>{i+1}</span>
-                        <div style={{ flex:1,minWidth:0 }}>
-                          <div style={{ color:"#94a3b8",fontSize:10,fontFamily:"'Space Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{n.label||shortAddr(n.id)}</div>
-                          <div style={{ height:2,background:"#0c2040",borderRadius:1,marginTop:4 }}>
-                            <div style={{ height:"100%",background:ac,borderRadius:1,width:`${Math.min(100,(n[vk]/max)*100)}%`,transition:"width 0.6s ease" }}/>
+          {/* METRICS tab */}
+          {tab==="metrics"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              {[[t("top_volume"),"volume",v=>`${fmt(v,2)}`,t("metric_eth"),T.cyan],
+                [t("top_freq"),"txCount",v=>`${v}`,"tx",T.blue]].map(([title,key,vf,unit,ac])=>{
+                const nodes=[...graph.nodes].filter(n=>n.id!==addr.toLowerCase()).sort((a,b)=>b[key]-a[key]).slice(0,8);
+                const maxV=nodes.reduce((mx,x)=>Math.max(mx,x[key]),0.001);
+                return(
+                  <div key={title} style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:18}}>
+                    <div className="mono" style={{color:T.muted,fontSize:9,letterSpacing:"0.14em",marginBottom:14}}>{title}</div>
+                    {nodes.map((n,i)=>(
+                      <div key={n.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                        <span className="mono" style={{color:T.dim,fontSize:9,width:14}}>{i+1}</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div className="mono" style={{color:T.text,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.label||shortAddr(n.id)}</div>
+                          <div style={{height:2,background:T.bg2,borderRadius:1,marginTop:4}}>
+                            <div style={{height:"100%",background:ac,borderRadius:1,width:`${Math.min(100,(n[key]/maxV)*100)}%`,transition:"width 0.5s"}}/>
                           </div>
                         </div>
-                        <span style={{ color:ac,fontFamily:"'Space Mono',monospace",fontSize:10,whiteSpace:"nowrap",flexShrink:0 }}>{vf(n[vk])}</span>
+                        <span className="mono" style={{color:ac,fontSize:10,whiteSpace:"nowrap"}}>{vf(n[key])} {unit}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          {/* ─── TAB ANALYSE IA ─── */}
-          {tab==="Analyse IA" && (
-            <div style={{ display:"grid",gridTemplateColumns:"auto 1fr",gap:14,alignItems:"start" }}>
-              {/* Score + flags */}
-              <div style={{ background:"rgba(4,10,22,0.96)",border:"1px solid #0c2040",borderRadius:12,padding:22,display:"flex",flexDirection:"column",alignItems:"center",gap:14,minWidth:170 }}>
-                <div style={{ color:"#2a4060",fontSize:9,letterSpacing:"0.16em" }}>TRUST SCORE</div>
+          {/* ANALYSIS tab */}
+          {tab==="analysis"&&(
+            <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:14,alignItems:"start"}}>
+              <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:20,
+                display:"flex",flexDirection:"column",alignItems:"center",gap:14,minWidth:160}}>
+                <div className="mono" style={{color:T.muted,fontSize:9,letterSpacing:"0.14em"}}>{t("trust_score")}</div>
                 <ScoreRing score={result.trustScore}/>
-                <div style={{ color:"#0c2040",fontSize:9,textAlign:"center",lineHeight:1.7 }}>Scoring algorithmique<br/>100% autonome<br/>zéro API IA externe</div>
-                <div style={{ width:"100%",borderTop:"1px solid #0c2040",paddingTop:12 }}>
-                  <div style={{ color:"#2a4060",fontSize:9,marginBottom:8,letterSpacing:"0.1em" }}>PROFIL FLAGS</div>
-                  <div style={{ display:"flex",flexDirection:"column",gap:5 }}>
-                    {Object.entries(result.flags).filter(([,v])=>v).map(([k])=><Pill key={k} text={k.replace("IS_","")} color="#fbbf24"/>)}
+                <div style={{width:"100%",borderTop:`1px solid ${T.border}`,paddingTop:12}}>
+                  <div className="mono" style={{color:T.muted,fontSize:9,marginBottom:8}}>{t("flags_label")}</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                    {Object.entries(result.flags).filter(([,v])=>v).map(([k])=>(
+                      <Tag key={k} text={k.replace("IS_","")} color={T.amber} size={9}/>
+                    ))}
                   </div>
                 </div>
               </div>
-
-              <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
-                {/* Narrative */}
-                <div style={{ background:"rgba(4,10,22,0.96)",border:"1px solid #0c2040",borderRadius:12,padding:20 }}>
-                  <div style={{ color:"#00ffe0",fontSize:9,letterSpacing:"0.14em",marginBottom:10 }}>■ PROFILER AGENT · RÉSUMÉ</div>
-                  <p style={{ color:"#94a3b8",fontSize:13,lineHeight:1.8 }}>{result.narrative}</p>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:18}}>
+                  <div className="mono" style={{color:T.cyan,fontSize:9,letterSpacing:"0.14em",marginBottom:10}}>{t("profiler_title")}</div>
+                  <p style={{color:"#8090a0",fontSize:13,lineHeight:1.8}}>{result.narrative}</p>
                 </div>
-
-                {/* Behaviour */}
-                <div style={{ background:"rgba(4,10,22,0.96)",border:"1px solid #0c2040",borderRadius:12,padding:20 }}>
-                  <div style={{ color:"#60a5fa",fontSize:9,letterSpacing:"0.14em",marginBottom:12 }}>■ BEHAVIOUR AGENT · {result.behaviors.length} INSIGHTS DÉTECTÉS</div>
-                  <div style={{ display:"flex",flexDirection:"column",gap:7 }}>
-                    {result.behaviors.map((b,i)=>(
-                      <div key={i} style={{ display:"flex",gap:10,padding:"8px 14px",background:"#05101f",borderRadius:8,borderLeft:"2px solid #1a3a60" }}>
-                        <span style={{ fontSize:15,flexShrink:0 }}>{b.icon}</span>
-                        <div>
-                          <div style={{ color:"#3b6eaa",fontSize:9,letterSpacing:"0.1em",marginBottom:3 }}>{b.cat.toUpperCase()}</div>
-                          <div style={{ color:"#94a3b8",fontSize:12,lineHeight:1.65 }}>{b.text}</div>
-                        </div>
-                      </div>
-                    ))}
+                <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:18}}>
+                  <div className="mono" style={{color:T.blue,fontSize:9,letterSpacing:"0.14em",marginBottom:12}}>
+                    {t("behaviour_title")} {result.behaviors.length} {t("behaviour_insights")}
                   </div>
+                  {result.behaviors.map((b,i)=>(
+                    <div key={i} style={{display:"flex",gap:10,padding:"8px 12px",background:T.bg2,borderRadius:6,marginBottom:6,borderLeft:`2px solid ${T.dim}`}}>
+                      <span style={{fontSize:14,flexShrink:0}}>{b.icon}</span>
+                      <div>
+                        <div className="mono" style={{color:T.muted,fontSize:9,marginBottom:3}}>{b.cat}</div>
+                        <div style={{color:"#8090a0",fontSize:12,lineHeight:1.6}}>{b.text}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-
-                {/* Risks */}
-                <div style={{ background:"rgba(4,10,22,0.96)",border:"1px solid #0c2040",borderRadius:12,padding:20 }}>
-                  <div style={{ color:"#f97316",fontSize:9,letterSpacing:"0.14em",marginBottom:12 }}>■ RISK AGENT · SCORE {result.riskResult.riskScore}/100</div>
-                  <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
-                    {result.riskResult.risks.map((r,i)=>(
-                      <div key={i} style={{ padding:"9px 14px",background:RB[r.level],border:`1px solid ${RC[r.level]}28`,borderRadius:8,display:"flex",alignItems:"flex-start",gap:12 }}>
-                        <span style={{ color:RC[r.level],fontSize:9,fontFamily:"'Space Mono',monospace",letterSpacing:"0.06em",whiteSpace:"nowrap",flexShrink:0,marginTop:2 }}>{r.level}</span>
-                        <span style={{ color:"#94a3b8",fontSize:12,lineHeight:1.6 }}>{r.msg}</span>
-                      </div>
-                    ))}
+                <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:18}}>
+                  <div className="mono" style={{color:T.amber,fontSize:9,letterSpacing:"0.14em",marginBottom:12}}>
+                    {t("risk_title")} {result.riskResult.riskScore}/100
                   </div>
+                  {result.riskResult.risks.map((r,i)=>(
+                    <div key={i} style={{padding:"8px 12px",background:RC[r.level]+"10",
+                      border:`1px solid ${RC[r.level]}25`,borderRadius:6,display:"flex",gap:10,marginBottom:6}}>
+                      <span className="mono" style={{color:RC[r.level],fontSize:9,whiteSpace:"nowrap",flexShrink:0,marginTop:2}}>{r.level}</span>
+                      <span style={{color:"#8090a0",fontSize:12}}>{r.msg}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           )}
 
-          {/* ─── TAB TOKENS/NFT ─── */}
-          {tab==="Tokens / NFT" && (
-            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14 }}>
-              {[
-                { title:"TOKENS ERC-20", items:m.tokenSymbols, count:m.tokenCount, color:"#e879f9", empty:"Aucun token ERC-20 détecté" },
-                { title:"NFT COLLECTIONS", items:m.nftCollections, count:m.nftCount, color:"#38bdf8", empty:"Aucune collection NFT détectée" },
-              ].map(({title,items,count,color,empty})=>(
-                <div key={title} style={{ background:"rgba(4,10,22,0.96)",border:"1px solid #0c2040",borderRadius:12,padding:20 }}>
-                  <div style={{ color,fontSize:9,letterSpacing:"0.14em",marginBottom:14 }}>{title} ({count})</div>
-                  {items.slice(0,20).map(t=>(
-                    <div key={t} style={{ padding:"7px 12px",background:"#05101f",borderRadius:6,marginBottom:6,color:"#e2e8f0",fontSize:12,fontFamily:"'Space Mono',monospace" }}>{t}</div>
+          {/* TOKENS tab */}
+          {tab==="tokens"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              {[[t("metric_erc20"),m.tokenSymbols,T.pink,t("no_erc20")],
+                [t("metric_nft"),m.nftCollections,T.blue,t("no_nft")]].map(([title,items,color,empty])=>(
+                <div key={title} style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,padding:18}}>
+                  <div className="mono" style={{color,fontSize:9,letterSpacing:"0.14em",marginBottom:14}}>{title} ({items.length})</div>
+                  {items.slice(0,20).map(tk=>(
+                    <div key={tk} className="mono" style={{padding:"6px 10px",background:T.bg2,borderRadius:5,marginBottom:5,color:T.text,fontSize:11}}>{tk}</div>
                   ))}
-                  {items.length===0 && <div style={{ color:"#1a3050",fontSize:12 }}>{empty}</div>}
-                  {items.length>20 && <div style={{ color:"#2a4060",fontSize:11,marginTop:6 }}>+ {items.length-20} autres…</div>}
+                  {items.length===0&&<div className="mono" style={{color:T.dim,fontSize:11}}>{empty}</div>}
                 </div>
               ))}
             </div>
           )}
-
-          <div style={{ marginTop:18,color:"#0c2040",fontSize:9,fontFamily:"'Space Mono',monospace",textAlign:"center",letterSpacing:"0.1em" }}>
-            CHAINLENS · AUTONOMOUS RULE-BASED ENGINE · NO EXTERNAL AI API · ETHERSCAN DATA · {new Date().toLocaleString("fr-FR")}
-          </div>
         </div>
       )}
 
       {!result&&!loading&&(
-        <div style={{ textAlign:"center",padding:"90px 24px",color:"#0c2040",position:"relative",zIndex:1 }}>
-          <div style={{ fontSize:64,marginBottom:18,opacity:0.3 }}>⬡</div>
-          <div style={{ fontSize:19,fontWeight:700,color:"#1a3050",marginBottom:10 }}>Entrez une adresse Ethereum</div>
-          <div style={{ fontSize:12,color:"#0c2040",lineHeight:1.8,maxWidth:500,margin:"0 auto" }}>
-            Profiler Agent · Behaviour Agent · Risk Agent · Score Engine<br/>
-            <span style={{ color:"#1a3050" }}>100% client-side · 0 API IA externe · Etherscan gratuit</span>
-          </div>
+        <div style={{textAlign:"center",padding:"80px 0"}}>
+          <div className="display" style={{fontSize:72,opacity:0.08,marginBottom:16,letterSpacing:"0.05em"}}>CHAINLENS</div>
+          <div className="mono" style={{fontSize:11,color:T.muted,lineHeight:2.2,whiteSpace:"pre-line"}}>{t("analyze_empty_sub")}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   PAGE: LEADERBOARD
+───────────────────────────────────────────────────────────────────── */
+function PageLeaderboard({onAnalyze, t}) {
+  const [traders,setTraders]=useState([]);
+  const [insiders,setInsiders]=useState({hotTokens:[],insiderGroups:[]});
+  const [loading,setLoading]=useState(false);
+  const [period,setPeriod]=useState(30);
+  const [sortKey,setSortKey]=useState("totalVolumeUSD");
+  const [filter,setFilter]=useState("");
+
+  const load=useCallback(async()=>{
+    setLoading(true);setTraders([]);setInsiders({hotTokens:[],insiderGroups:[]});
+    const data=await fetchTopUniswapTraders(period);
+    setTraders(data);
+    setInsiders(analyzeInsiders(data));
+    setLoading(false);
+  },[period]);
+
+  const filtered=useMemo(()=>{
+    const q=filter.toLowerCase();
+    return [...traders]
+      .filter(tr=>!q||tr.address.includes(q)||(tr.label||"").toLowerCase().includes(q)||tr.topPairs.some(p=>p.toLowerCase().includes(q)))
+      .sort((a,b)=>b[sortKey]-a[sortKey]);
+  },[traders,filter,sortKey]);
+
+  return(
+    <div style={{padding:"24px",maxWidth:1400,margin:"0 auto"}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <div>
+          <span className="display" style={{fontSize:32}}>{t("lb_title")} </span>
+          <span className="display" style={{fontSize:32,color:T.amber}}>{t("lb_subtitle")}</span>
+        </div>
+        <div style={{flex:1}}/>
+        {[7,30,90,180].map(d=>(
+          <button key={d} onClick={()=>setPeriod(d)} className="mono"
+            style={{padding:"6px 14px",background:period===d?T.amber+"20":"transparent",
+              border:`1px solid ${period===d?T.amber:T.border2}`,borderRadius:5,
+              color:period===d?T.amber:T.muted,cursor:"pointer",fontSize:10}}>
+            {d}{t("lb_period")}
+          </button>
+        ))}
+        <button onClick={load} disabled={loading}
+          style={{padding:"9px 22px",background:loading?T.bg2:`linear-gradient(135deg,${T.amber},${T.red})`,
+            border:"none",borderRadius:6,color:loading?T.muted:T.bg,fontWeight:700,
+            cursor:loading?"not-allowed":"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:"0.1em"}}>
+          {loading?t("lb_loading"):t("lb_load")}
+        </button>
+      </div>
+
+      {/* Insider insights */}
+      {insiders.hotTokens.length>0&&(
+        <div style={{background:T.bg1,border:`1px solid ${T.amber}30`,borderRadius:10,padding:16,marginBottom:20}}>
+          <div className="mono" style={{color:T.amber,fontSize:10,letterSpacing:"0.12em",marginBottom:10}}>{t("insider_hot")}</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:insiders.insiderGroups.length?14:0}}>
+            {insiders.hotTokens.map(({token,count})=>(
+              <div key={token} style={{padding:"4px 12px",background:T.amber+"15",border:`1px solid ${T.amber}30`,borderRadius:20,display:"flex",alignItems:"center",gap:6}}>
+                <span className="mono" style={{color:T.amber,fontSize:11}}>{token}</span>
+                <span className="mono" style={{color:T.muted,fontSize:9}}>{count} traders</span>
+              </div>
+            ))}
+          </div>
+          {insiders.insiderGroups.length>0&&(
+            <>
+              <div className="mono" style={{color:T.red,fontSize:10,letterSpacing:"0.12em",marginBottom:8}}>{t("insider_cluster")}</div>
+              {insiders.insiderGroups.slice(0,3).map((g,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,
+                  padding:"6px 10px",background:T.red+"08",borderRadius:6,border:`1px solid ${T.red}15`}}>
+                  <span className="mono" style={{color:T.muted,fontSize:9}}>{shortAddr(g.a.address)}</span>
+                  <span style={{color:T.dim}}>↔</span>
+                  <span className="mono" style={{color:T.muted,fontSize:9}}>{shortAddr(g.b.address)}</span>
+                  <span style={{color:T.dim,fontSize:10}}>·</span>
+                  {g.sharedTokens.map(tk=><Tag key={tk} text={tk} color={T.red} size={9}/>)}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Filter + sort */}
+      {traders.length>0&&(
+        <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+          <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder={t("lb_filter")} className="mono"
+            style={{flex:1,minWidth:200,background:T.bg1,border:`1px solid ${T.border2}`,
+              borderRadius:6,padding:"7px 12px",color:T.text,fontSize:11}}/>
+          {[["totalVolumeUSD",t("lb_sort_vol")],["swapCount",t("lb_sort_swaps")],["avgTxSize",t("lb_sort_avg")]].map(([k,l])=>(
+            <button key={k} onClick={()=>setSortKey(k)} className="mono"
+              style={{padding:"6px 12px",background:sortKey===k?T.blue+"20":"transparent",
+                border:`1px solid ${sortKey===k?T.blue:T.border}`,borderRadius:5,
+                color:sortKey===k?T.blue:T.muted,cursor:"pointer",fontSize:9}}>
+              {l}
+            </button>
+          ))}
+          <span className="mono" style={{color:T.muted,fontSize:10}}>{filtered.length} {t("lb_traders")}</span>
+        </div>
+      )}
+
+      {loading&&(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"60px 0",gap:14}}>
+          <div className="spin" style={{width:24,height:24,border:`2px solid ${T.amber}`,borderTopColor:"transparent",borderRadius:"50%"}}/>
+          <div className="mono" style={{color:T.muted,fontSize:11}}>{t("lb_subgraph_note")}</div>
+        </div>
+      )}
+
+      {/* Leaderboard table */}
+      {filtered.length>0&&(
+        <div style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"40px 1fr 130px 80px 130px 1fr 90px",
+            padding:"10px 16px",background:T.bg2,borderBottom:`1px solid ${T.border}`}}>
+            {["#",t("lb_col_addr"),t("lb_col_vol"),t("lb_col_swaps"),t("lb_col_avg"),t("lb_col_pairs"),t("lb_col_action")].map(h=>(
+              <div key={h} className="mono" style={{color:T.muted,fontSize:9,letterSpacing:"0.12em"}}>{h}</div>
+            ))}
+          </div>
+          {filtered.map((tr,i)=>(
+            <div key={tr.address} className="row-hover"
+              style={{display:"grid",gridTemplateColumns:"40px 1fr 130px 80px 130px 1fr 90px",
+                padding:"11px 16px",borderBottom:`1px solid ${T.border}`,alignItems:"center",background:"transparent"}}>
+              <div className="mono" style={{color:i<3?T.amber:T.dim,fontSize:11,fontWeight:i<3?700:400}}>
+                {i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}
+              </div>
+              <div>
+                {tr.label&&<div style={{color:T.amber,fontSize:11,marginBottom:2}}>{tr.label}</div>}
+                <div className="mono" style={{color:T.muted,fontSize:10}}>{shortAddr(tr.address)}</div>
+              </div>
+              <div className="mono" style={{color:T.green,fontSize:12,fontWeight:600}}>${fmtK(tr.totalVolumeUSD)}</div>
+              <div className="mono" style={{color:T.blue,fontSize:11}}>{tr.swapCount}</div>
+              <div className="mono" style={{color:T.text,fontSize:11}}>${fmtK(tr.avgTxSize)}</div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {tr.topPairs.map(p=><Tag key={p} text={p} color={T.purple} size={8}/>)}
+              </div>
+              <button onClick={()=>onAnalyze(tr.address)}
+                style={{padding:"5px 10px",background:"transparent",border:`1px solid ${T.cyan}40`,
+                  borderRadius:4,color:T.cyan,cursor:"pointer",fontSize:9,fontFamily:"'IBM Plex Mono',monospace"}}>
+                {t("lb_analyze")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading&&traders.length===0&&(
+        <div style={{textAlign:"center",padding:"80px 0"}}>
+          <div className="display" style={{fontSize:52,color:T.dim,marginBottom:12}}>{t("lb_empty_title")}</div>
+          <div className="mono" style={{color:T.muted,fontSize:11,whiteSpace:"pre-line"}}>{t("lb_empty_sub")}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   PAGE: WHALES & OGs
+───────────────────────────────────────────────────────────────────── */
+function PageWhales({onAnalyze, t}) {
+  const [catFilter,setCatFilter]=useState("ALL");
+  const [search,setSearch]=useState("");
+  const categories=["ALL",...Object.keys(CATEGORY_META)];
+
+  const filtered=WHALE_DIRECTORY.filter(w=>{
+    if(catFilter!=="ALL"&&w.category!==catFilter)return false;
+    if(search&&!w.name.toLowerCase().includes(search.toLowerCase())&&!w.address.toLowerCase().includes(search.toLowerCase()))return false;
+    return true;
+  });
+
+  return(
+    <div style={{padding:"24px",maxWidth:1400,margin:"0 auto"}}>
+      <div style={{marginBottom:22}}>
+        <div className="display" style={{fontSize:32,marginBottom:4}}>
+          {t("wh_title")} <span style={{color:T.cyan}}>{t("wh_ogs")}</span> {t("wh_and")} <span style={{color:T.amber}}>{t("wh_whales")}</span>
+        </div>
+        <div className="mono" style={{color:T.muted,fontSize:10}}>{WHALE_DIRECTORY.length} {t("wh_subtitle")}</div>
+      </div>
+
+      {/* Filters */}
+      <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t("wh_search")} className="mono"
+          style={{background:T.bg1,border:`1px solid ${T.border2}`,borderRadius:6,
+            padding:"7px 12px",color:T.text,fontSize:11,minWidth:200}}/>
+        <div style={{flex:1}}/>
+        {categories.map(c=>{
+          const meta=CATEGORY_META[c];
+          const active=catFilter===c;
+          const col=meta?.color||T.cyan;
+          return(
+            <button key={c} onClick={()=>setCatFilter(c)} className="mono"
+              style={{padding:"6px 12px",background:active?col+"20":"transparent",
+                border:`1px solid ${active?col:T.border}`,borderRadius:5,
+                color:active?col:T.muted,cursor:"pointer",fontSize:9}}>
+              {meta?`${meta.icon} ${meta.label}`:t("wh_all")}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Grid */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
+        {filtered.map(w=>{
+          const meta=CATEGORY_META[w.category];
+          const col=meta?.color||T.cyan;
+          return(
+            <div key={w.address} className="card-hover"
+              style={{background:T.bg1,border:`1px solid ${T.border}`,borderRadius:10,
+                padding:16,borderTop:`2px solid ${col}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                <div>
+                  <div style={{color:T.text,fontSize:14,fontWeight:600,marginBottom:4}}>{w.name}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    <Tag text={w.tag} color={col} size={9}/>
+                    <Tag text={`${t("wh_since")} ${w.since}`} color={T.muted} size={9}/>
+                  </div>
+                </div>
+                <span style={{fontSize:20}}>{meta?.icon||"⬡"}</span>
+              </div>
+              <div className="mono" style={{color:T.dim,fontSize:9,marginBottom:8,wordBreak:"break-all"}}>{w.address}</div>
+              <div style={{color:"#6080a0",fontSize:11,lineHeight:1.55,marginBottom:12}}>{w.notes}</div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <button onClick={()=>onAnalyze(w.address)}
+                  style={{flex:1,padding:"7px",background:col+"15",border:`1px solid ${col}30`,
+                    borderRadius:5,color:col,cursor:"pointer",fontSize:10,fontFamily:"'IBM Plex Mono',monospace"}}>
+                  {t("wh_analyze")}
+                </button>
+                <a href={`https://etherscan.io/address/${w.address}`} target="_blank" rel="noreferrer"
+                  style={{padding:"7px 10px",background:"transparent",border:`1px solid ${T.border2}`,
+                    borderRadius:5,color:T.muted,fontSize:10,textDecoration:"none",fontFamily:"'IBM Plex Mono',monospace"}}>↗</a>
+                {w.twitter&&(
+                  <a href={`https://twitter.com/${w.twitter}`} target="_blank" rel="noreferrer"
+                    style={{padding:"7px 10px",background:"transparent",border:`1px solid ${T.border2}`,
+                      borderRadius:5,color:T.muted,fontSize:10,textDecoration:"none",fontFamily:"'IBM Plex Mono',monospace"}}>𝕏</a>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   ROOT APP
+───────────────────────────────────────────────────────────────────── */
+export default function App() {
+  const [locale,setLocale]=useState("en");
+  const t=useMemo(()=>createT(locale),[locale]);
+  const [page,setPage]=useState("analyze");
+  const [ethPrice,setEthPrice]=useState(0);
+  const [devKey,setDevKey]=useState(()=>{try{return import.meta.env.VITE_ETHERSCAN_KEY||"";}catch{return "";}});
+  const [showKey,setShowKey]=useState(false);
+
+  useEffect(()=>{ fetchEthPrice().then(p=>{ if(p>0) setEthPrice(p); }); },[]);
+
+  const goAnalyze=(addr)=>{ setPage("analyze"); };
+
+  const NAV=[
+    {id:"analyze",    label:t("nav_analyze"),     icon:"⬡"},
+    {id:"leaderboard",label:t("nav_leaderboard"), icon:"▲"},
+    {id:"whales",     label:t("nav_whales"),       icon:"🐋"},
+  ];
+
+  return(
+    <div style={{minHeight:"100vh",background:T.bg}}>
+      <style>{GLOBAL_CSS}</style>
+
+      {/* Background grid */}
+      <div style={{position:"fixed",inset:0,
+        backgroundImage:`linear-gradient(${T.bg} 1px,transparent 1px),linear-gradient(90deg,${T.bg} 1px,transparent 1px)`,
+        backgroundSize:"48px 48px",opacity:0.18,pointerEvents:"none",zIndex:0}}/>
+
+      {/* ── HEADER ── */}
+      <header style={{position:"sticky",top:0,zIndex:100,
+        background:"rgba(5,8,16,0.97)",backdropFilter:"blur(20px)",
+        borderBottom:`1px solid ${T.border}`}}>
+        <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px",
+          display:"flex",alignItems:"center",height:54}}>
+
+          {/* Logo */}
+          <div style={{display:"flex",alignItems:"center",gap:10,marginRight:32}}>
+            <div style={{width:28,height:28,borderRadius:6,
+              background:`linear-gradient(135deg,${T.cyan},#0066ff)`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:14,fontWeight:800,color:T.bg,fontFamily:"'Bebas Neue',sans-serif"}}>⬡</div>
+            <div className="display" style={{fontSize:20,letterSpacing:"0.05em"}}>
+              CHAIN<span style={{color:T.cyan}}>LENS</span>
+            </div>
+          </div>
+
+          {/* Nav */}
+          <nav style={{display:"flex",flex:1}}>
+            {NAV.map(n=>(
+              <button key={n.id} onClick={()=>setPage(n.id)} className="mono"
+                style={{padding:"0 18px",height:54,background:"none",border:"none",
+                  borderBottom:page===n.id?`2px solid ${T.cyan}`:"2px solid transparent",
+                  color:page===n.id?T.cyan:T.muted,cursor:"pointer",fontSize:11,
+                  letterSpacing:"0.1em",display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10}}>{n.icon}</span>{n.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Right controls */}
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {/* ETH price */}
+            {ethPrice>0&&(
+              <div className="mono" style={{color:T.green,fontSize:11}}>
+                {t("eth_price")} <span style={{color:T.text}}>${ethPrice.toLocaleString("en-US")}</span>
+              </div>
+            )}
+
+            {/* Locale toggle */}
+            <div style={{display:"flex",background:T.bg1,border:`1px solid ${T.border}`,borderRadius:5,overflow:"hidden"}}>
+              {LOCALES.map(l=>(
+                <button key={l} onClick={()=>setLocale(l)} className="mono"
+                  style={{padding:"5px 10px",background:locale===l?T.cyan+"20":"transparent",
+                    border:"none",color:locale===l?T.cyan:T.muted,cursor:"pointer",
+                    fontSize:10,letterSpacing:"0.06em"}}>
+                  {LOCALE_LABELS[l]}
+                </button>
+              ))}
+            </div>
+
+            {/* API key toggle */}
+            <button onClick={()=>setShowKey(v=>!v)}
+              style={{padding:"5px 12px",background:"transparent",border:`1px solid ${T.border2}`,
+                borderRadius:5,color:T.muted,cursor:"pointer",fontSize:10,fontFamily:"'IBM Plex Mono',monospace"}}>
+              {t("nav_api")}
+            </button>
+          </div>
+        </div>
+
+        {/* API key panel */}
+        {showKey&&(
+          <div style={{background:T.bg1,borderTop:`1px solid ${T.border}`,
+            padding:"10px 24px",display:"flex",gap:12,alignItems:"center"}}>
+            <span className="mono" style={{color:T.muted,fontSize:10,whiteSpace:"nowrap"}}>
+              {IS_DEV?t("dev_key_label"):t("proxy_active")}
+            </span>
+            {IS_DEV
+              ?<input type="password" value={devKey} onChange={e=>setDevKey(e.target.value)} className="mono"
+                style={{flex:1,background:T.bg,border:`1px solid ${T.border2}`,borderRadius:5,
+                  padding:"6px 10px",color:T.cyan,fontSize:10}} placeholder={t("dev_key_hint")}/>
+              :<span className="mono" style={{color:T.green,fontSize:10}}>{t("proxy_active")}</span>
+            }
+            <a href="https://etherscan.io/apis" target="_blank" rel="noreferrer"
+              className="mono" style={{color:T.dim,fontSize:9,textDecoration:"none"}}>{t("free_key")}</a>
+          </div>
+        )}
+      </header>
+
+      {/* ── PAGES ── */}
+      <main style={{position:"relative",zIndex:1}}>
+        {page==="analyze"&&(
+          <PageAnalyze ethPrice={ethPrice} devKey={devKey} setDevKey={setDevKey} t={t}/>
+        )}
+        {page==="leaderboard"&&(
+          <PageLeaderboard onAnalyze={(addr)=>{setPage("analyze");}} t={t}/>
+        )}
+        {page==="whales"&&(
+          <PageWhales onAnalyze={(addr)=>{setPage("analyze");}} t={t}/>
+        )}
+      </main>
+
+      {/* ── FOOTER ── */}
+      <footer style={{borderTop:`1px solid ${T.border}`,padding:"14px 24px",textAlign:"center"}}>
+        <span className="mono" style={{color:T.dim,fontSize:9,letterSpacing:"0.1em"}}>
+          {t("footer")}
+        </span>
+      </footer>
     </div>
   );
 }
