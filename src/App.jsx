@@ -1134,7 +1134,8 @@ export default function App() {
                   borderBottom:page===n.id?`2px solid ${T.cyan}`:"2px solid transparent",
                   color:page===n.id?T.cyan:T.muted,cursor:"pointer",fontSize:11,
                   letterSpacing:"0.1em",display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:10}}><span className="nav-icon">{n.icon}</span><span className="nav-label" style={{marginLeft:6}}>{n.label}</span>
+                <span className="nav-icon" style={{fontSize:12}}>{n.icon}</span>
+                <span className="nav-label" style={{marginLeft:5}}>{n.label}</span>
               </button>
             ))}
           </nav>
