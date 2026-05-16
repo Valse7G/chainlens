@@ -1,5 +1,5 @@
 /**
- * ChainLens v2.0.0 — Main Application
+ * ChainLens v2.1.0 — Main Application
  * On-chain intelligence engine. Bilingual EN/FR.
  * No external AI API. Etherscan V2. Uniswap V3 Subgraph.
  */
@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as d3 from "d3";
 import { WHALE_DIRECTORY, CATEGORY_META } from "./data/whales.js";
 import { createT, LOCALES, LOCALE_LABELS } from "./i18n.js";
+import PageSmartMoney from "./pages/PageSmartMoney.jsx";
 
 /* ─────────────────────────────────────────────────────────────────────
    DESIGN TOKENS
@@ -1092,6 +1093,7 @@ export default function App() {
     {id:"analyze",    label:t("nav_analyze"),     icon:"⬡"},
     {id:"leaderboard",label:t("nav_leaderboard"), icon:"▲"},
     {id:"whales",     label:t("nav_whales"),       icon:"🐋"},
+    {id:"smartmoney", label:t("nav_smartmoney"),   icon:"⚡"},
   ];
 
   return(
@@ -1195,6 +1197,9 @@ export default function App() {
         )}
         {page==="whales"&&(
           <PageWhales onAnalyze={goAnalyze} t={t}/>
+        )}
+        {page==="smartmoney"&&(
+          <PageSmartMoney onAnalyze={goAnalyze} devKey={devKey} t={t}/>
         )}
       </main>
 

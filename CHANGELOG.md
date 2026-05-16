@@ -116,3 +116,45 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 - Leaderboard now always shows data regardless of subgraph availability
 - Curated traders include Smart Money (Tetranode, 0xSifu), VC funds (a16z, Paradigm), market makers (Jump), CEX wallets (Binance, Coinbase), NFT whales (Pranksy)
 - Volume figures scale proportionally with selected period multiplier
+
+---
+
+## [2.1.0] — 2026-05-16
+
+### Added — Smart Money Intelligence Feed (new page ⚡)
+
+**New page: SMART MONEY**
+
+Full on-chain intelligence pipeline detecting new token buys by tracked smart money wallets.
+
+#### Architecture
+- `src/data/smartmoney.js` — 25 curated SM wallets in 4 tiers: Alpha (Tetranode, 0xSifu, Andrew Kang…), Fund (a16z, Paradigm, Jump…), Known (Vitalik, Multicoin…), Degen (Pranksy, Justin Sun…)
+- `src/engine/smartMoneyEngine.js` — autonomous pipeline:
+  1. `fetchNewPools(hoursBack)` — Etherscan getLogs on Uniswap V3 Factory `PoolCreated` events
+  2. `detectSMBuysOnPool(pool, token, fromBlock)` — token transfers filtered for SM addresses
+  3. `getTokenMeta(address)` — deployer, symbol, name, holder count via Etherscan
+  4. `calcTokenRisk(meta, fee)` — rule-based token risk score 0–100 (age, holders, fee tier, verification)
+  5. `calcDevRisk(devAddress)` — dev wallet risk score 0–100 (wallet age, tx count, Tornado Cash funding)
+  6. `runPipeline(hoursBack, onProgress)` — full orchestration with batched fetching (4 pools/batch)
+- `src/pages/PageSmartMoney.jsx` — full UI:
+  - Live ticker bar (most recent SM buys scrolling)
+  - Scan period: 6H / 12H / 24H / 48H
+  - Sort: SM Count / Tier 1 / Risk
+  - Filter by tier: All / Alpha / Fund / Known
+  - Auto-refresh toggle (120s interval) with countdown
+  - Progress bar with pipeline phase + percentage
+  - Summary stats: tokens detected, SM wallets active, alpha signals, high-risk count
+  - Token cards: expandable, show SM buyers, risk badges, dev flags, action buttons (Analyze Token, Analyze Dev, Etherscan, Uniswap)
+
+#### Key features
+- **Token aggregation by SM buyer count** — tokens bought by multiple SM wallets ranked first
+- **⚡ ALPHA SIGNAL** badge when Tier 1 (Alpha) wallet buys
+- **Token risk scoring**: pool age, holder count, fee tier, contract verification
+- **Dev wallet risk scoring**: wallet age, deploy count, Tornado Cash funding detection
+- **Uniswap direct link** per token for instant trading
+- **One-click analyze** token contract or dev wallet from card
+
+### Changed
+- Navigation: 4th tab ⚡ SMART MONEY added to header
+- `package.json`: bumped to `2.1.0`
+- Footer version string: `v2.1.0`

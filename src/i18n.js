@@ -13,6 +13,7 @@ const translations = {
     nav_analyze:     "ANALYZE",
     nav_leaderboard: "LEADERBOARD",
     nav_whales:      "WHALES & OGs",
+    nav_smartmoney:  "SMART MONEY",
     nav_api:         "⚙ API",
 
     // Header
@@ -134,7 +135,7 @@ const translations = {
     wh_all:      "ALL",
 
     // Footer
-    footer: "CHAINLENS v2.0.0 · AUTONOMOUS ENGINE · ETHERSCAN V2 · UNISWAP V3 SUBGRAPH",
+    footer: "CHAINLENS v2.1.0 · AUTONOMOUS ENGINE · ETHERSCAN V2 · UNISWAP V3 SUBGRAPH",
 
     // Profiles
     profile_contract:   "Smart Contract",
@@ -205,6 +206,7 @@ const translations = {
     nav_analyze:     "ANALYSER",
     nav_leaderboard: "CLASSEMENT",
     nav_whales:      "BALEINES & OGs",
+    nav_smartmoney:  "SMART MONEY",
     nav_api:         "⚙ API",
 
     // Header
@@ -326,7 +328,7 @@ const translations = {
     wh_all:      "TOUS",
 
     // Footer
-    footer: "CHAINLENS v2.0.0 · MOTEUR AUTONOME · ETHERSCAN V2 · UNISWAP V3 SUBGRAPH",
+    footer: "CHAINLENS v2.1.0 · MOTEUR AUTONOME · ETHERSCAN V2 · UNISWAP V3 SUBGRAPH",
 
     // Profiles
     profile_contract:   "Smart Contract",
