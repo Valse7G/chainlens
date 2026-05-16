@@ -1,36 +1,57 @@
-# ⬡ ChainLens v2.0.0
+# ⬡ ChainLens
 
-**On-chain intelligence engine for Ethereum wallets.**
-Bilingual (EN/FR) · Zero external AI API · Etherscan V2 · Uniswap V3 Subgraph · 100% client-side.
+![version](https://img.shields.io/badge/version-v2.0.0-00f5d4?style=flat-square)
+![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)
+![Vite](https://img.shields.io/badge/Vite-5-646cff?style=flat-square&logo=vite)
+![D3](https://img.shields.io/badge/D3.js-7-f9a03c?style=flat-square&logo=d3dotjs)
+![Node](https://img.shields.io/badge/Node.js-20-339933?style=flat-square&logo=nodedotjs)
+![Netlify](https://img.shields.io/badge/Netlify-Edge_Functions-00c7b7?style=flat-square&logo=netlify)
+![Etherscan](https://img.shields.io/badge/Etherscan-V2_API-21325b?style=flat-square)
+![Uniswap](https://img.shields.io/badge/Uniswap-V3_Subgraph-ff007a?style=flat-square&logo=uniswap)
+![i18n](https://img.shields.io/badge/i18n-EN_%7C_FR-4a6080?style=flat-square)
+![status](https://img.shields.io/badge/status-production--ready-22c55e?style=flat-square)
+
+**On-chain intelligence engine for Ethereum.**
+Bilingual EN/FR · Zero external AI API · Etherscan V2 · Uniswap V3 Subgraph · 100% client-side analysis.
 
 ---
 
 ## Features
 
-### Analyze Page
-- Wallet profiling via 4 autonomous agents (Profiler, Behaviour, Risk, Score Engine)
-- D3.js force-directed relationship graph — up to 60 counterparties, zoomable, draggable
-- 8 on-chain metrics (balance, tx count, gas, ERC-20 tokens, NFT collections…)
-- Trust Score 0–100 computed from 20+ signals
-- Risk detection: Tornado Cash, cycling patterns, dust attacks, MEV signals
+### ⬡ Analyze
+- Wallet profiling via 4 autonomous agents (Profiler · Behaviour · Risk · Score Engine)
+- D3.js force-directed relationship graph — 60 counterparties, zoom, drag, click detail
+- 8 live on-chain metrics (balance, txs, gas, ERC-20, NFTs…)
+- Trust Score 0–100 computed from 20+ on-chain signals
+- Risk detection: Tornado Cash, cycling, dust attacks, MEV, bot signatures
 
-### Leaderboard Page
-- Top 100 Uniswap V3 traders by volume — live from The Graph subgraph
-- Configurable periods: 7 / 30 / 90 / 180 days
-- Insider cluster detection: wallets buying the same tokens → coordination signals
+### ▲ Leaderboard
+- Top 100 Uniswap V3 traders — live from The Graph subgraph
+- Periods: 7 / 30 / 90 / 180 days
+- Insider cluster detection: co-buying wallets → coordination signals
 - Hot token heatmap across top traders
-- One-click → Analyze any trader
+- One-click → auto-analyze any wallet
 
-### Whales & OGs Page
-- 20+ curated Ethereum OGs, whales, CEXs, DeFi protocols, VC funds, NFT whales
-- Filter by category: OG · Exchange · Protocol · DeFi · Fund · NFT · Whale
-- Direct links: Etherscan · Twitter/X · One-click analyze
+### 🐋 Whales & OGs
+- 31 curated addresses: OGs, smart money traders, NFT whales, CEXs, DeFi protocols, VC funds
+- Filter by category: OG · Smart Money · Exchange · Protocol · DeFi · Fund · NFT · Whale
+- External links: Etherscan · Twitter/X
+- One-click → auto-analyze any entry
 
-### UI/UX
-- Dark terminal aesthetic — `IBM Plex Mono` + `Bebas Neue` + `DM Sans`
-- Bilingual EN/FR toggle (default: English)
-- Responsive grid layout
-- Netlify Edge Function proxy — API key never exposed to browser
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 · Vite 5 |
+| Graph | D3.js v7 (force-directed) |
+| On-chain data | Etherscan API V2 (`chainid=1`) |
+| DEX data | Uniswap V3 Subgraph via The Graph |
+| Serverless proxy | Netlify Edge Functions (Node 20) |
+| Fonts | IBM Plex Mono · Bebas Neue · DM Sans |
+| i18n | Custom EN/FR translation system |
+| Deployment | Netlify (CDN + Edge Functions) |
 
 ---
 
@@ -38,59 +59,42 @@ Bilingual (EN/FR) · Zero external AI API · Etherscan V2 · Uniswap V3 Subgraph
 
 ```
 chainlens/
-├── index.html                    # Vite entry
+├── index.html
 ├── package.json
 ├── vite.config.js
-├── netlify.toml                  # Build config + Edge Function route
+├── netlify.toml                      # Build config + Edge Function route
 ├── .gitignore
 ├── README.md
 ├── CHANGELOG.md
 └── src/
-    ├── main.jsx                  # React root + Error Boundary
-    ├── App.jsx                   # Full application (3 pages + agents)
-    ├── i18n.js                   # Bilingual translations EN/FR
-    └── data/
-        └── whales.js             # Whale & OG directory (static)
+│   ├── main.jsx                      # React root + ErrorBoundary
+│   ├── App.jsx                       # 3 pages + 6 autonomous agents
+│   ├── i18n.js                       # EN/FR translation system
+│   └── data/
+│       └── whales.js                 # 31 curated addresses + category metadata
 └── netlify/
     └── edge-functions/
-        └── etherscan.js          # Serverless proxy for Etherscan V2 API
+        └── etherscan.js              # Serverless Etherscan V2 proxy
 ```
 
 ---
 
 ## Autonomous Agent Stack
 
-All analysis runs client-side. Zero LLM calls.
+No LLM. No AI API. All analysis is algorithmic and runs client-side.
 
-| Agent | Input | Output |
-|---|---|---|
-| `computeMetrics` | raw tx list | 30+ computed metrics |
-| `ProfilerAgent` | metrics | wallet profile + boolean flags |
-| `BehaviorAgent` | metrics | behavioral insights (templated, data-driven) |
-| `RiskAgent` | metrics | risk signals + score 0–100 |
-| `ScoreEngine` | all above | trust score 0–100 |
-| `NarrativeGenerator` | all above | natural language summary |
-
-### ProfilerAgent — detected profiles
-`Smart Contract` · `Bot / Automated` · `Whale` · `Exchange / Market Maker` · `DeFi & NFT Power User` · `DeFi Power User` · `NFT Trader` · `Mid-size Holder` · `Long-term HODLer` · `Active Trader` · `Dormant Wallet` · `Recent Wallet` · `Retail User`
-
-### RiskAgent — detected signals
-- Tornado Cash / mixer interactions
-- Cycling pattern (many tx, few counterparties)
-- Fresh wallet with high volume
-- Dust attack targeting
-- Bot with zero-error + burst signatures
-- MEV signals (high gas + high frequency)
+| Agent | Role |
+|---|---|
+| `computeMetrics` | Extracts 30+ raw metrics from tx list |
+| `ProfilerAgent` | Classifies wallet into 13 profile types |
+| `BehaviorAgent` | Detects 10+ behavioral patterns with real metric values |
+| `RiskAgent` | Scores risk signals 0–100 |
+| `ScoreEngine` | Computes weighted Trust Score 0–100 |
+| `NarrativeGenerator` | Produces data-driven natural language summary |
 
 ---
 
 ## Deployment
-
-### Prerequisites
-- Node.js 20+
-- Etherscan API key (free at [etherscan.io/apis](https://etherscan.io/apis))
-- GitHub account
-- Netlify account (free tier)
 
 ### Local Development
 
@@ -101,77 +105,82 @@ npm install
 npm run dev   # → http://localhost:5173
 ```
 
-In local dev, enter your Etherscan key in the **⚙ API** panel.
-The app calls Etherscan directly (no proxy needed locally).
+Enter your Etherscan key in the **⚙ API** panel (dev only — not needed in production).
 
-### Deploy to Netlify
+### Deploy to Netlify via GitHub
 
-**1. Push to GitHub**
+**Step 1 — Push to GitHub**
 ```bash
 git init
 git add .
 git commit -m "feat: ChainLens v2.0.0"
+git tag v2.0.0                        # ← version tag
 git remote add origin https://github.com/YOUR_USERNAME/chainlens.git
 git branch -M main
 git push -u origin main
+git push origin v2.0.0                # ← push tag
 ```
 
-**2. Connect Netlify**
+**Step 2 — Connect Netlify**
 - app.netlify.com → Add new site → Import from GitHub → select `chainlens`
-- Build settings are auto-detected from `netlify.toml`
+- Build settings auto-detected from `netlify.toml`
 
-**3. Set environment variable**
+**Step 3 — Set environment variable**
 - Netlify → Site configuration → Environment variables
-- Add: `ETHERSCAN_KEY` = `your_api_key_here`
-- ⚠️ Use `ETHERSCAN_KEY` (not `VITE_ETHERSCAN_KEY`) — the Edge Function runs server-side
+- Add: `ETHERSCAN_KEY` = `your_etherscan_key`
+- ⚠️ Use `ETHERSCAN_KEY` (not `VITE_ETHERSCAN_KEY`) — runs server-side in Edge Function
 
-**4. Trigger deploy**
+**Step 4 — Deploy**
 - Deploys → Trigger deploy → Deploy site
+- Live in ~60s
 
-**5. Verify**
-- Netlify → Functions → Edge Functions → `etherscan` → logs should show `ETHERSCAN_KEY présente: true`
+**Step 5 — Verify**
+- Netlify → Functions → Edge Functions → `etherscan` → logs should show `ETHERSCAN_KEY présente: true | longueur: 32+`
 
 ### Update Workflow
 
 ```bash
-# After editing any file:
+# After any change:
 git add .
-git commit -m "fix: description"
+git commit -m "fix: description of change"
 git push
 # → Netlify auto-rebuilds in ~45s
+```
+
+### Tagging a new release
+
+```bash
+git tag v2.1.0
+git push origin v2.1.0
 ```
 
 ---
 
 ## Environment Variables
 
-| Variable | Scope | Required | Notes |
+| Variable | Scope | Required | Description |
 |---|---|---|---|
-| `ETHERSCAN_KEY` | Netlify (server) | Yes | Used by Edge Function — never sent to browser |
-| `VITE_ETHERSCAN_KEY` | Vite (client build) | No | Not needed for production; only for local testing without the panel |
+| `ETHERSCAN_KEY` | Netlify server (Edge Function) | **Yes** | Never exposed to browser |
+| `VITE_ETHERSCAN_KEY` | Vite client build | No | Only for local dev without the panel |
 
 ---
 
 ## External APIs
 
-| Service | Usage | Cost | Auth |
+| Service | Endpoint | Cost | Auth |
 |---|---|---|---|
-| Etherscan V2 | Balance, txlist, tokentx, tokennfttx, getabi, ethprice | Free (5 req/s) | API key via Edge Function |
-| The Graph | Uniswap V3 swaps subgraph | Free (public) | None |
-
-No AI APIs. No paid services required.
+| Etherscan V2 | `api.etherscan.io/v2/api` | Free (5 req/s) | Key via Edge Function |
+| The Graph | Uniswap V3 Subgraph | Free | None |
 
 ---
 
 ## i18n
 
-Two locales supported: `en` (default) and `fr`.
-All UI strings are in `src/i18n.js` under the `translations` object.
+Toggle between **EN** (default) and **FR** in the header.
+All strings are in `src/i18n.js`.
 
-To add a language:
-1. Add a new key to `LOCALES` in `i18n.js`
-2. Add a full translation block under `translations`
-3. Add the label to `LOCALE_LABELS`
+To add a language: add a locale key to `LOCALES`, a label to `LOCALE_LABELS`,
+and a full translation block to `translations`.
 
 ---
 
@@ -179,14 +188,13 @@ To add a language:
 
 | Item | Detail |
 |---|---|
-| 500 tx cap | Etherscan free tier `offset` limit |
-| ETH mainnet only | `chainid=1` hardcoded; multi-chain in roadmap |
-| Subgraph rate limits | The Graph public endpoint may throttle under load |
-| Static whale directory | Labels not dynamically fetched from Etherscan Labels API |
-| PnL estimation | Volume-based proxy only — not exact realized PnL |
+| 500 tx cap | Etherscan free tier offset limit |
+| ETH mainnet only | `chainid=1` hardcoded |
+| Subgraph rate limits | The Graph public endpoint may throttle |
+| PnL estimation | Volume-based proxy, not realized PnL |
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT

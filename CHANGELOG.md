@@ -61,3 +61,17 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 - Netlify deployment: `vite build` → `dist/` → CDN
 - `netlify.toml` with SPA redirect + security headers + asset cache
 - `.gitignore`, `README.md`
+
+---
+
+## [2.0.1] — 2026-05-16
+
+### Fixed
+- **Auto-analyze on navigation**: clicking "ANALYZE →" from Whales/Leaderboard now automatically triggers the analysis — address is passed via `pendingAddr` prop + `autoRun` effect
+- **Leaderboard empty results**: Uniswap V3 subgraph now tries multiple endpoints in order (`api.thegraph.com` then gateway fallback); reduced query to `first:500` to stay within free tier limits
+- **Whale directory expanded**: added 31 wallets (+10 vs v2.0.0) including individual smart money traders (Tetranode, Loomdart, DCF God, Andrew Kang), NFT whales (DCinvestor, Metakovan), Ethereum Foundation multisig
+- **New TRADER category**: `Smart Money` category added for individual on-chain traders with `📈` icon and red accent
+
+### Changed
+- README badges now use `shields.io` with correct tech (React 18, Vite 5, D3 v7, Node 20, Netlify, Etherscan V2, Uniswap V3, i18n EN|FR)
+- GitHub deployment procedure now includes `git tag` and `git push origin <tag>` steps

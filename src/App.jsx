@@ -97,20 +97,34 @@ const fetchEthPrice   = ()  => safeJson(buildUrl({module:"stats",action:"ethpric
 /* ─────────────────────────────────────────────────────────────────────
    UNISWAP V3 SUBGRAPH
 ───────────────────────────────────────────────────────────────────── */
-const GRAPH_URL = "https://gateway.thegraph.com/api/public/query/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV";
+// Uniswap V3 subgraph — multiple endpoints tried in order
+const GRAPH_URLS = [
+  "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3",
+  "https://gateway.thegraph.com/api/public/query/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
+];
 
 async function fetchTopUniswapTraders(days=30) {
   const since = Math.floor(Date.now()/1000) - days*86400;
+  // Use smaller first to stay within free tier limits
   const query = `{
-    swaps(first:1000,orderBy:amountUSD,orderDirection:desc,where:{timestamp_gt:${since}}){
-      sender recipient amountUSD timestamp
+    swaps(first:500,orderBy:amountUSD,orderDirection:desc,where:{timestamp_gt:${since}}){
+      sender amountUSD timestamp
       token0{symbol} token1{symbol}
     }
   }`;
+  let j = null;
+  for (const url of GRAPH_URLS) {
+    try {
+      const r = await fetch(url, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query})});
+      if (!r.ok) { console.warn("[Subgraph] HTTP", r.status, url); continue; }
+      j = await r.json();
+      if (j?.data?.swaps) { console.info("[Subgraph] OK:", url, "swaps:", j.data.swaps.length); break; }
+      console.warn("[Subgraph] No data:", url, JSON.stringify(j).slice(0,200));
+    } catch(e) { console.warn("[Subgraph] fetch error:", url, e.message); }
+  }
   try {
-    const r = await fetch(GRAPH_URL, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query})});
-    const j = await r.json();
-    const swaps = j?.data?.swaps || [];
+    const jj = j;
+    const swaps = jj?.data?.swaps || [];
     const traders = new Map();
     for (const s of swaps) {
       const addr = (s.sender||"").toLowerCase();
@@ -128,7 +142,7 @@ async function fetchTopUniswapTraders(days=30) {
         topPairs:[...tr.tokens.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p])=>p),
         avgTxSize: tr.totalVolumeUSD/Math.max(tr.swapCount,1)}))
       .sort((a,b)=>b.totalVolumeUSD-a.totalVolumeUSD).slice(0,100);
-  } catch(e) { console.warn("[Uniswap Subgraph]", e.message); return []; }
+  } catch(e) { console.warn("[Uniswap Subgraph] parse error:", e.message); return []; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -473,8 +487,9 @@ const NodePanel=({node,onClose,t})=>{
 /* ─────────────────────────────────────────────────────────────────────
    PAGE: ANALYZE
 ───────────────────────────────────────────────────────────────────── */
-function PageAnalyze({ethPrice,devKey,setDevKey,t}) {
+function PageAnalyze({ethPrice,devKey,setDevKey,pendingAddr,onAddrConsumed,t}) {
   const [addr,setAddr]=useState("");
+  const [autoRun,setAutoRun]=useState(false);
   const [loading,setLoading]=useState(false);
   const [step,setStep]=useState("");
   const [error,setError]=useState("");
@@ -483,8 +498,18 @@ function PageAnalyze({ethPrice,devKey,setDevKey,t}) {
   const [tab,setTab]=useState("graph");
   const [selNode,setSelNode]=useState(null);
 
-  const analyze=useCallback(async()=>{
-    const address=addr.trim();
+  // Receive address from Whales/Leaderboard and auto-run
+  useEffect(()=>{
+    if(pendingAddr && pendingAddr!==addr){
+      setAddr(pendingAddr);
+      setResult(null);setGraph(null);setError("");
+      setAutoRun(true);
+      onAddrConsumed();
+    }
+  },[pendingAddr]);
+
+  const analyze=useCallback(async(overrideAddr)=>{
+    const address=(overrideAddr||addr).trim();
     if(!/^0x[0-9a-fA-F]{40}$/.test(address)){setError(t("analyze_err_invalid"));return;}
     _devKey=devKey.trim();
     setError("");setLoading(true);setResult(null);setGraph(null);setSelNode(null);
@@ -516,6 +541,14 @@ function PageAnalyze({ethPrice,devKey,setDevKey,t}) {
   const m=result?.m;
   const usd=m&&ethPrice?`$${(m.balance*ethPrice).toLocaleString("en-US",{maximumFractionDigits:0})}`:null;
   const TABS=[["graph",t("tab_graph")],["metrics",t("tab_metrics")],["analysis",t("tab_analysis")],["tokens",t("tab_tokens")]];
+
+  // Auto-run when address is set from external navigation
+  useEffect(()=>{
+    if(autoRun && addr && /^0x[0-9a-fA-F]{40}$/.test(addr)){
+      setAutoRun(false);
+      analyze(addr);
+    }
+  },[autoRun,addr]);
 
   return(
     <div style={{padding:"24px",maxWidth:1400,margin:"0 auto"}}>
@@ -968,10 +1001,14 @@ export default function App() {
   const [ethPrice,setEthPrice]=useState(0);
   const [devKey,setDevKey]=useState(()=>{try{return import.meta.env.VITE_ETHERSCAN_KEY||"";}catch{return "";}});
   const [showKey,setShowKey]=useState(false);
+  const [pendingAddr,setPendingAddr]=useState(null);
 
   useEffect(()=>{ fetchEthPrice().then(p=>{ if(p>0) setEthPrice(p); }); },[]);
 
-  const goAnalyze=(addr)=>{ setPage("analyze"); };
+  const goAnalyze=(addr)=>{
+    setPendingAddr(addr);
+    setPage("analyze");
+  };
 
   const NAV=[
     {id:"analyze",    label:t("nav_analyze"),     icon:"⬡"},
@@ -1071,13 +1108,14 @@ export default function App() {
       {/* ── PAGES ── */}
       <main style={{position:"relative",zIndex:1}}>
         {page==="analyze"&&(
-          <PageAnalyze ethPrice={ethPrice} devKey={devKey} setDevKey={setDevKey} t={t}/>
+          <PageAnalyze ethPrice={ethPrice} devKey={devKey} setDevKey={setDevKey}
+            pendingAddr={pendingAddr} onAddrConsumed={()=>setPendingAddr(null)} t={t}/>
         )}
         {page==="leaderboard"&&(
-          <PageLeaderboard onAnalyze={(addr)=>{setPage("analyze");}} t={t}/>
+          <PageLeaderboard onAnalyze={goAnalyze} t={t}/>
         )}
         {page==="whales"&&(
-          <PageWhales onAnalyze={(addr)=>{setPage("analyze");}} t={t}/>
+          <PageWhales onAnalyze={goAnalyze} t={t}/>
         )}
       </main>
 
