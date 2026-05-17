@@ -135,7 +135,7 @@ const translations = {
     wh_all:      "ALL",
 
     // Footer
-    footer: "CHAINLENS v2.1.1 · AUTONOMOUS ENGINE · ETHERSCAN V2 · UNISWAP V3 SUBGRAPH",
+    footer: "CHAINLENS v2.1.2 · AUTONOMOUS ENGINE · ETHERSCAN V2 · UNISWAP V3 SUBGRAPH",
 
     // Profiles
     profile_contract:   "Smart Contract",
@@ -328,7 +328,7 @@ const translations = {
     wh_all:      "TOUS",
 
     // Footer
-    footer: "CHAINLENS v2.1.1 · MOTEUR AUTONOME · ETHERSCAN V2 · UNISWAP V3 SUBGRAPH",
+    footer: "CHAINLENS v2.1.2 · MOTEUR AUTONOME · ETHERSCAN V2 · UNISWAP V3 SUBGRAPH",
 
     // Profiles
     profile_contract:   "Smart Contract",

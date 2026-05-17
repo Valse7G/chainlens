@@ -181,3 +181,36 @@ Full on-chain intelligence pipeline detecting new token buys by tracked smart mo
 - Last scan timestamp displayed in header
 - Empty state shows spinner instead of "click LOAD" instruction
 - `periodRef` pattern used for timer callback to avoid stale closure
+
+---
+
+## [2.1.2] — 2026-05-17
+
+### Fixed
+
+**1. Timer reset on page navigation**
+- Root cause: SM and LB timers lived inside page components — destroyed on unmount, reset on re-mount
+- Fix: lifted both timer + state to `App` root component; pages receive data as props
+- `runSmScan` and `runLbLoad` are defined once in `App`, run independently of active page
+- `smScanRef / smCdRef` (3-min SM) and `lbTimerRef / lbCdRef` (60-min LB) never unmount
+- `smMoneyEngine.js` loaded via dynamic `import()` to avoid circular dependency
+
+**2. Poor text contrast on dark background**
+- Updated design tokens: `text:"#ffffff"` (was `#f0f4ff`), `sub:"#c8d8f0"` (was `#a0b4cc`), `muted:"#8aaccc"` (was `#6a8aaa`), `dim:"#3a5878"` (was `#2a4060`)
+- All secondary text (labels, subtitles, addresses, notes) now clearly legible on dark bg
+- Page bottom padding set to `80px` to clear mobile bottom nav bar
+
+**3. Mobile navigation not visible**
+- Replaced single nav approach with dual-nav pattern:
+  - `top-nav` class — shown on desktop/tablet (≥641px), horizontal tab bar in header
+  - `bottom-nav` — fixed bottom bar on mobile (≤640px), icon + short label per tab
+  - Bottom nav uses `safe-area-inset-bottom` for iPhone notch support
+  - Active tab shows cyan 2px indicator line at bottom
+- Header on mobile: logo only + EN/FR + API button (ETH price hidden to save space)
+
+### Changed
+- `PageLeaderboard` rewritten as pure prop-driven component (no internal state/timers)
+- `PageSmartMoney` rewritten as pure prop-driven component (no `useEffect`/`setInterval`)
+- Both pages receive: data, loading state, countdown, last-update timestamp from App root
+- LB period change now triggers immediate reload via `onPeriod` callback
+- SM TF change loads cached data instantly; triggers scan if TF has no cache yet

@@ -1,6 +1,6 @@
 {
   "name": "chainlens",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "On-chain intelligence \u2014 wallet analyzer, Uniswap leaderboard, whale directory, Smart Money intelligence feed",
   "private": true,
   "type": "module",
