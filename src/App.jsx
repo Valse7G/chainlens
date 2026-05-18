@@ -1,5 +1,5 @@
 /**
- * ChainLens v2.1.2 — Main Application
+ * ChainLens v2.2.0 — Main Application
  * On-chain intelligence engine. Bilingual EN/FR.
  * No external AI API. Etherscan V2. Uniswap V3 Subgraph.
  */
@@ -8,6 +8,7 @@ import * as d3 from "d3";
 import { WHALE_DIRECTORY, CATEGORY_META } from "./data/whales.js";
 import { createT, LOCALES, LOCALE_LABELS } from "./i18n.js";
 import PageSmartMoney from "./pages/PageSmartMoney.jsx";
+import PageMemeFlow  from "./pages/PageMemeFlow.jsx";
 
 /* ─────────────────────────────────────────────────────────────────────
    DESIGN TOKENS
@@ -1192,6 +1193,7 @@ export default function App() {
     {id:"leaderboard",label:t("nav_leaderboard"), icon:"▲"},
     {id:"whales",     label:t("nav_whales"),       icon:"🐋"},
     {id:"smartmoney", label:t("nav_smartmoney"),   icon:"⚡"},
+    {id:"memeflow",   label:t("nav_memeflow"),     icon:"🔥"},
   ];
 
   return(
@@ -1307,6 +1309,9 @@ export default function App() {
             tfId={smTfId} countdown={smCountdown} timeframes={TIMEFRAMES}
             onTfChange={handleSmTfChange} onScan={()=>runSmScan(smTfId)}
             onAnalyze={goAnalyze} t={t}/>
+        )}
+        {page==="memeflow"&&(
+          <PageMemeFlow onAnalyze={goAnalyze} devKey={devKey} t={t}/>
         )}
       </main>
 

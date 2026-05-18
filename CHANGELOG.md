@@ -214,3 +214,65 @@ Full on-chain intelligence pipeline detecting new token buys by tracked smart mo
 - Both pages receive: data, loading state, countdown, last-update timestamp from App root
 - LB period change now triggers immediate reload via `onPeriod` callback
 - SM TF change loads cached data instantly; triggers scan if TF has no cache yet
+
+---
+
+## [2.2.0] — 2026-05-17
+
+### Added — Smart Meme Flow Terminal 🔥
+
+**New page: MEME FLOW** (`src/pages/PageMemeFlow.jsx` — 549 lines)
+
+Bloomberg Terminal for meme smart money. Tracks insider/whale coordination on reference memecoins → detects potential runners before they move.
+
+#### Reference Memecoins (`src/data/memecoins.js`)
+9 curated ETH memecoins used as insider signal sources:
+- **Tier 1** (highest signal): SHIB, PEPE, SPX6900, FLOKI
+- **Tier 2**: TURBO, MOG, WOJAK, MEME, APE
+- Missing tokens added vs user list: TURBO, MOG, WOJAK, MEME (Memeland), APE
+
+#### New Engines
+
+**`src/engine/memeWhaleEngine.js`** (267 lines)
+- `fetchTopHolders(token)` — top 100 holders via Etherscan `tokenholderlist` (fallback: infer from `tokentx` net balance)
+- `buildInsiderRegistry()` — deduplicated wallet set across all 9 memecoins; tiers 1–5 by SM overlap + memecoin count
+- `trackInsiderActivity(insiders, hoursBack)` — recent non-memecoin token buys per insider; batched in groups of 5
+- `aggregateRunnerSignals(insiders)` — groups buys by token; computes signal strength (recency, SM buyers, tier1 count)
+- `runMemePipeline(hoursBack)` — full orchestration
+
+**`src/engine/smartScoreEngine.js`** (151 lines)
+- `computeSmartScore(address)` — composite score 0–100:
+  - `realized_pnl_proxy × 0.4` — win/loss ratio from token cycles
+  - `winrate × 0.2` — % tokens where sells > buys
+  - `early_entry_score × 0.3` — position in holder history for ref memecoins
+  - `hold_performance × 0.1` — optimal 7–90 day holds
+- `batchSmartScore(addresses)` — parallel scoring in batches of 3
+- Tags: `top-smart-money`, `early-mover`, `high-winrate`, `og-wallet`, `fresh-wallet`
+
+**`src/engine/signalEngine.js`** (191 lines)
+5 convergence signals — "the signal is a convergence, not a transaction":
+- **Signal #1 CLUSTER_BUY** — ≥2 SM wallets buy same token within 30-min window; score = cluster_size × avg_smart_score
+- **Signal #2 FIRST_SMART_ENTRY** — historically profitable wallet (smartScore ≥ 60) enters early
+- **Signal #3 ROTATION** — insider exits memecoins, enters new token (capital redeployment)
+- **Signal #4 HOLDER_QUALITY** — % of buyers with high smart score × SM density
+- **Runner Score composite** (0–100):
+  ```
+  (cluster×0.35) + (first_entry×0.25) + (rotation×0.15) + (quality×0.15)
+  + SM_bonus + tier1_bonus + buycount_bonus
+  ```
+  Levels: EXTREME ≥80 / HIGH ≥65 / MEDIUM ≥45 / WATCH ≥25 / LOW
+
+#### UI Features
+- **3 views**: Runners (signal cards) · Insiders (scored table) · Memecoins (reference grid)
+- **Runner cards**: expandable, score ring, 5 signal badges, buyer breakdown, smart score bars
+- **Insider table**: smart score bar, winrate %, early entry %, memecoin holdings, analyze button
+- **Live ticker**: scrolling feed of latest insider buys
+- **Auto-scan every 5 min** with countdown
+- **Level filter**: ALL / EXTREME / HIGH / MEDIUM / WATCH
+- **Time windows**: 6H / 12H / 24H / 48H
+- **Links**: DexScreener · Uniswap Trade · Etherscan per runner token
+
+#### Rationale (from analysis)
+> "The real edge is NOT seeing a whale. It's seeing multiple historically profitable wallets enter simultaneously on an ignored token."
+>
+> Trigger condition: `mcap<20M AND cluster≥4 AND smart_score_avg>threshold AND holder_growth_accelerating AND liquidity_increasing`
